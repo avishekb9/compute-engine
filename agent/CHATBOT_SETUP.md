@@ -1,6 +1,12 @@
 # Vertex Agent Builder — "SHSSM Econometrics Analyst"
 
-Status (2026-05-31): **LIVE & verified end-to-end** — natural language → agent → compute_engine tool → Cloud Run R analysis → analyst explanation. Verified: "Is the UK market stationary?" → ADF −52.64 + KPSS 0.156 → stationary.
+Status (2026-05-31): **LIVE & verified end-to-end** — natural language → agent → compute tool → Cloud Run R analysis → analyst explanation. Verified live: "Is the S&P 500 stationary? (live)" → price LEVELS non-stationary (ADF −1.57), LOG-RETURNS stationary (ADF −21.68); identity: "I am the SHSSM Econometrics Analyst".
+
+## CURRENT IDS (2026-05-31, after live-data update — these supersede earlier ones)
+- **Agent:** `fd984817-4292-4bc2-af78-f4551bf8ecbc` (unchanged)
+- **Start playbook:** `34b7dba9-68c2-46b4-aa08-8ca05cb7d6c0` ("Econometrics Analyst v2") — `agent.startPlaybook` points here.
+- **Tool:** `db27b434-b635-4b74-beae-8fcb89bcd427` ("compute_engine_v2"), OpenAPI schema = `agent/openapi-tool.yaml`, server = the Cloud Run URL.
+- **DELETED/ORPHANED (do not use):** tool `ddc64f1c` (compute_engine) was force-deleted; playbook `7f793d84` ("Econometrics Analyst") is wedged/orphaned (no longer the start resource). They got into a state where the Dialogflow `referencedTools` validator rejected EVERY playbook PATCH ("Tool ddc64f1c does not exist under the agent") — caused by an earlier `openApiSpec` PATCH to that tool. **Lesson: do NOT PATCH a tool's `openApiSpec` in place; create a NEW tool and a NEW playbook, then repoint `agent.startPlaybook`.** That is how the working `34b7dba9`+`db27b434` pair was made.
 
 ## What's already done (verified)
 
