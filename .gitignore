@@ -1,0 +1,11 @@
+# runtime artifacts (created by the server)
+.jobs/
+.cache/
+*.log
+
+# never commit secrets / local env
+.env
+.env.local
+
+# node
+node_modules/

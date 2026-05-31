@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SHSSM Compute Engine · Sandboxed Econometrics</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Orbitron:wght@700;900&display=swap');
+:root{
+  --bg:#000;--panel:rgba(8,10,14,.85);--border:rgba(0,212,255,.18);--hot:rgba(0,255,136,.35);
+  --rule:rgba(255,255,255,.06);--text:#fff;--mid:#c9d1d9;--dim:#6b7280;
+  --cyan:#00d4ff;--green:#00ff88;--amber:#ffaa00;--red:#ff0040;--violet:#8a2be2;
+  --sans:'Space Grotesk',sans-serif;--mono:'JetBrains Mono',monospace;--disp:'Orbitron',sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:var(--sans);background:var(--bg);color:var(--text);line-height:1.5;font-size:15px}
+body::before{content:'';position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background-image:radial-gradient(circle at 15% 10%,rgba(0,212,255,.06)0,transparent 45%),radial-gradient(circle at 85% 90%,rgba(0,255,136,.05)0,transparent 45%)}
+.wrap{max-width:1180px;margin:0 auto;padding:0 1.4rem}
+header.h{padding:2.2rem 0 1rem;text-align:center}
+header.h h1{font-family:var(--disp);font-size:clamp(1.5rem,4vw,2.5rem);font-weight:900;letter-spacing:1.5px;
+  background:linear-gradient(120deg,var(--cyan),var(--green));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+header.h .sub{font-family:var(--mono);font-size:.78rem;color:var(--cyan);text-transform:uppercase;letter-spacing:3px;margin:.7rem 0}
+header.h .lede{max-width:680px;margin:0 auto;color:var(--mid);font-size:.92rem}
+header.h .badge{display:inline-block;font-family:var(--mono);font-size:.66rem;color:var(--green);border:1px solid var(--hot);border-radius:5px;padding:.12rem .5rem;margin-top:.6rem}
+.grid{display:grid;grid-template-columns:340px 1fr;gap:1.4rem;margin-top:1.5rem}
+@media(max-width:820px){.grid{grid-template-columns:1fr}}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:1.2rem 1.3rem}
+.panel h2{font-size:1rem;font-weight:600;margin-bottom:.9rem;color:var(--text)}
+.fld{margin-bottom:.9rem}
+.fld label{display:block;font-family:var(--mono);font-size:.72rem;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:.35rem}
+.fld select,.fld input{width:100%;font-family:var(--mono);font-size:.85rem;background:#04060b;color:var(--text);border:1px solid var(--border);border-radius:7px;padding:.5rem .7rem}
+.method-card{border:1px solid var(--border);border-radius:8px;padding:.6rem .8rem;margin-bottom:.5rem;cursor:pointer;transition:.15s}
+.method-card:hover{border-color:var(--cyan)}
+.method-card.sel{border-color:var(--green);background:rgba(0,255,136,.05)}
+.method-card .mt{font-weight:600;font-size:.9rem}
+.method-card .mc{font-family:var(--mono);font-size:.64rem;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin-top:.15rem}
+.method-card .md{font-size:.78rem;color:var(--mid);margin-top:.3rem}
+.seriesbox{max-height:170px;overflow-y:auto;border:1px solid var(--border);border-radius:7px;padding:.5rem;display:grid;grid-template-columns:1fr 1fr;gap:.2rem}
+.seriesbox label{display:flex;align-items:center;gap:.35rem;font-family:var(--mono);font-size:.76rem;color:var(--mid);text-transform:none;letter-spacing:0;cursor:pointer}
+button.run{width:100%;font-family:var(--mono);font-size:.85rem;text-transform:uppercase;letter-spacing:1px;cursor:pointer;background:rgba(0,255,136,.12);color:var(--green);border:1px solid var(--hot);border-radius:8px;padding:.65rem;margin-top:.3rem}
+button.run:hover{background:rgba(0,255,136,.2)}
+button.run:disabled{opacity:.5;cursor:not-allowed}
+.result{min-height:200px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:.7rem;margin-bottom:1rem}
+.kpi{background:rgba(0,212,255,.05);border:1px solid var(--border);border-radius:8px;padding:.8rem;text-align:center}
+.kpi .v{font-family:var(--mono);font-size:1.2rem;font-weight:600;color:var(--cyan)}
+.kpi .l{font-size:.7rem;color:var(--dim);margin-top:.25rem}
+table.r{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:.8rem;margin-top:.5rem}
+table.r th,table.r td{text-align:left;padding:.4rem .6rem;border-bottom:1px solid var(--rule)}
+table.r th{color:var(--dim);text-transform:uppercase;font-size:.66rem}
+table.r td.n{text-align:right;color:var(--cyan)}
+.interp{background:rgba(138,43,226,.08);border:1px solid rgba(138,43,226,.3);border-radius:8px;padding:.7rem .9rem;margin-top:.9rem;font-size:.86rem;color:var(--mid)}
+svg.irf{width:100%;height:230px;background:#04060b;border:1px solid var(--border);border-radius:8px;margin-top:.6rem}
+.stamp{font-family:var(--mono);font-size:.72rem;color:var(--dim);margin-top:.8rem}
+.stamp .ok{color:var(--green)} .stamp .bad{color:var(--red)}
+.msg{color:var(--dim);font-family:var(--mono);padding:2rem;text-align:center}
+.spin{display:inline-block;width:13px;height:13px;border:2px solid var(--border);border-top-color:var(--cyan);border-radius:50%;animation:s .7s linear infinite;vertical-align:middle;margin-right:.4rem}
+@keyframes s{to{transform:rotate(360deg)}}
+footer{border-top:1px solid var(--rule);margin-top:2rem;padding:1.5rem 0 3rem;font-family:var(--mono);font-size:.76rem;color:var(--dim);text-align:center}
+footer a{color:var(--cyan);text-decoration:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="h">
+    <h1>SHSSM COMPUTE ENGINE</h1>
+    <div class="sub">Sandboxed Open-Source Econometrics · R + Python</div>
+    <p class="lede">EViews / RATS / OxMetrics-style analytics on the project's real research data — running in a network-isolated, read-only sandbox over open-source R packages.</p>
+    <div class="badge" id="sandbox-badge">sandbox: …</div>
+  </header>
+  <div class="grid">
+    <div class="panel">
+      <h2>1 · Method</h2>
+      <div id="methods"></div>
+      <h2 style="margin-top:1.2rem">2 · Data &amp; parameters</h2>
+      <div class="fld"><label>Dataset</label><select id="dataset"></select></div>
+      <div class="fld"><label id="series-label">Series</label><div class="seriesbox" id="series"></div></div>
+      <div id="extra-params"></div>
+      <button class="run" id="run" disabled>Run analysis</button>
+      <div class="stamp" id="stamp"></div>
+    </div>
+    <div class="panel">
+      <h2>3 · Results</h2>
+      <div class="result" id="result"><div class="msg">Pick a method, choose series, and run.</div></div>
+    </div>
+  </div>
+  <div class="panel" id="chat-panel" style="margin-top:1.4rem">
+    <h2>💬 Ask the analyst <span style="font-family:var(--mono);font-size:.66rem;color:var(--dim);font-weight:400">— Gemini · runs real sandboxed analyses</span></h2>
+    <div id="chat-log" style="max-height:340px;overflow-y:auto;display:flex;flex-direction:column;gap:.7rem;margin-bottom:.8rem"></div>
+    <div style="display:flex;gap:.6rem">
+      <input id="chat-in" type="text" placeholder="e.g. Is China's market stationary?  ·  GARCH volatility for the UK  ·  tail spillover USA→India"
+        style="flex:1;font-family:var(--mono);font-size:.85rem;background:#04060b;color:var(--text);border:1px solid var(--border);border-radius:8px;padding:.6rem .8rem">
+      <button id="chat-send" class="run" style="width:auto;padding:.6rem 1.2rem;margin:0">Send</button>
+    </div>
+    <div style="margin-top:.6rem;display:flex;gap:.4rem;flex-wrap:wrap" id="chat-chips"></div>
+  </div>
+  <footer>SHSSM Compute Engine · sandboxed R/Python · Gemini analyst · part of the <a href="../research-engine.html">Research Engine</a> · IIT Bhubaneswar</footer>
+</div>
+<script>
+let CATALOG=null, SELECTED=null;
+const esc=s=>String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
+const f=(x,d=4)=>x==null?"–":(typeof x==="number"?x.toFixed(d):x);
+
+async function boot(){
+  const h=await fetch('/health').then(r=>r.json()).catch(()=>null);
+  document.getElementById('sandbox-badge').textContent = h? `sandbox: ${h.sandbox} · net-isolated · ${h.methods} methods` : 'engine offline';
+  CATALOG=await fetch('/api/compute/catalog').then(r=>r.json());
+  // datasets
+  const dsel=document.getElementById('dataset');
+  dsel.innerHTML=Object.entries(CATALOG.datasets).map(([k,d])=>`<option value="${k}">${esc(d.label)}</option>`).join('');
+  dsel.addEventListener('change',renderSeries);
+  // methods
+  document.getElementById('methods').innerHTML=Object.entries(CATALOG.methods).map(([id,m])=>
+    `<div class="method-card" data-id="${id}"><div class="mt">${esc(m.label)}</div><div class="mc">${esc(m.category)}</div><div class="md">${esc(m.desc)}</div></div>`).join('');
+  document.querySelectorAll('.method-card').forEach(c=>c.addEventListener('click',()=>selectMethod(c.dataset.id)));
+  renderSeries();
+  selectMethod(Object.keys(CATALOG.methods)[0]);
+}
+
+function selectMethod(id){
+  SELECTED=id;
+  document.querySelectorAll('.method-card').forEach(c=>c.classList.toggle('sel',c.dataset.id===id));
+  const m=CATALOG.methods[id];
+  const spec=m.params.series;
+  const lbl=document.getElementById('series-label');
+  lbl.textContent = Array.isArray(spec.n)?`Series (pick ${spec.n[0]}–${spec.n[1]})`:`Series (pick ${spec.n})`;
+  // extra int params
+  const extra=Object.entries(m.params).filter(([k,s])=>s.type==='int');
+  document.getElementById('extra-params').innerHTML=extra.map(([k])=>
+    `<div class="fld"><label>${esc(k)} (optional)</label><input type="number" id="p_${k}" placeholder="auto"></div>`).join('');
+  document.getElementById('run').disabled=false;
+}
+
+function renderSeries(){
+  const ds=document.getElementById('dataset').value;
+  document.getElementById('series').innerHTML=CATALOG.datasets[ds].series.map(s=>
+    `<label><input type="checkbox" value="${s}">${s}</label>`).join('');
+}
+
+function getParams(){
+  const m=CATALOG.methods[SELECTED];
+  const series=[...document.querySelectorAll('#series input:checked')].map(c=>c.value);
+  const params={dataset:document.getElementById('dataset').value,series};
+  for(const [k,s] of Object.entries(m.params)){
+    if(s.type==='int'){const el=document.getElementById('p_'+k);if(el&&el.value!=='')params[k]=parseInt(el.value,10);}
+  }
+  return params;
+}
+
+async function run(){
+  const params=getParams();
+  const stamp=document.getElementById('stamp');
+  stamp.innerHTML='<span class="spin"></span>running in sandbox…';
+  document.getElementById('run').disabled=true;
+  try{
+    const r=await fetch('/api/compute/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({method:SELECTED,params})}).then(r=>r.json());
+    if(!r.ok){stamp.innerHTML=`<span class="bad">✗ ${esc(r.error)}</span>`;document.getElementById('result').innerHTML=`<div class="msg" style="color:var(--red)">${esc(r.error)}</div>`;}
+    else{stamp.innerHTML=`<span class="ok">✓ done</span> · ${r.ms}ms · sandbox: ${esc(r.sandbox)} · job #${r.job_id}`;renderResult(r.result);}
+  }catch(e){stamp.innerHTML=`<span class="bad">✗ ${esc(e.message)}</span>`;}
+  document.getElementById('run').disabled=false;
+}
+
+function renderResult(d){
+  const el=document.getElementById('result');
+  if(d.method==='unit_root'){
+    el.innerHTML=`<div class="kpis">
+      <div class="kpi"><div class="v">${f(d.adf.statistic,2)}</div><div class="l">ADF statistic</div></div>
+      <div class="kpi"><div class="v">${f(d.adf.crit['5pct'],2)}</div><div class="l">5% critical</div></div>
+      <div class="kpi"><div class="v">${d.adf.reject_unit_root_5pct?'reject':'fail'}</div><div class="l">unit root H₀</div></div>
+      <div class="kpi"><div class="v">${f(d.kpss.p_value,3)}</div><div class="l">KPSS p-value</div></div>
+      <div class="kpi"><div class="v">${d.n}</div><div class="l">observations</div></div></div>
+      <div class="interp">${esc(d.series)}: ${esc(d.interpretation)}. KPSS ${d.kpss.stationary_5pct?'agrees (stationary)':'disagrees'}.</div>`;
+  } else if(d.method==='dfa_hurst'){
+    el.innerHTML=`<div class="kpis">
+      <div class="kpi"><div class="v">${f(d.hurst,3)}</div><div class="l">Hurst exponent</div></div>
+      <div class="kpi"><div class="v">${d.n}</div><div class="l">observations</div></div>
+      <div class="kpi"><div class="v">${d.n_boxes}</div><div class="l">DFA boxes</div></div></div>
+      <div class="interp">${esc(d.series)}: H = ${f(d.hurst,4)} — ${esc(d.interpretation)}.</div>`;
+  } else if(d.method==='var_irf'){
+    const r2rows=Object.entries(d.adj_r2).map(([k,v])=>`<tr><td>${esc(k)}</td><td class="n">${f(v,4)}</td></tr>`).join('');
+    el.innerHTML=`<div class="kpis">
+      <div class="kpi"><div class="v">${d.lag_order}</div><div class="l">VAR lag (AIC)</div></div>
+      <div class="kpi"><div class="v">${d.stable?'yes':'no'}</div><div class="l">stable</div></div>
+      <div class="kpi"><div class="v">${f(d.max_root,3)}</div><div class="l">max root</div></div>
+      <div class="kpi"><div class="v">${d.n}</div><div class="l">observations</div></div></div>
+      <table class="r"><thead><tr><th>Equation</th><th style="text-align:right">Adj R²</th></tr></thead><tbody>${r2rows}</tbody></table>
+      <div class="interp">Orthogonal IRF to a shock in <b>${esc(d.irf_shock)}</b> (horizon ${d.irf_horizon}):</div>
+      ${irfSvg(d.irf,d.irf_shock)}`;
+  } else if(d.method==='garch'){
+    const c=d.coefficients;
+    const crows=Object.entries(c).map(([k,v])=>`<tr><td>${esc(k)}</td><td class="n">${(+v).toExponential(3)}</td></tr>`).join('');
+    el.innerHTML=`<div class="kpis">
+      <div class="kpi"><div class="v">${f(d.persistence,4)}</div><div class="l">persistence α+β</div></div>
+      <div class="kpi"><div class="v">${d.high_persistence?'high':'mod'}</div><div class="l">vol clustering</div></div>
+      <div class="kpi"><div class="v">${f(d.current_cond_vol,4)}</div><div class="l">current σ</div></div>
+      <div class="kpi"><div class="v">${d.n}</div><div class="l">observations</div></div></div>
+      <table class="r"><thead><tr><th>Coefficient</th><th style="text-align:right">Estimate</th></tr></thead><tbody>${crows}</tbody></table>
+      <div class="interp">${esc(d.series)}: ${esc(d.interpretation)}</div>`;
+  } else if(d.method==='wavelet'){
+    const mx=Math.max(...d.scales.map(s=>s.pct_of_total),1);
+    const rows=d.scales.map(s=>`<tr><td>${esc(s.scale)}</td><td>${esc(s.horizon)}</td>
+      <td style="width:40%"><div style="display:flex;align-items:center;gap:.5rem"><div class="bar" style="flex:1"><div class="barfill" style="width:${(s.pct_of_total/mx*100).toFixed(0)}%"></div></div><span class="n" style="min-width:48px">${s.pct_of_total}%</span></div></td></tr>`).join('');
+    el.innerHTML=`<div class="kpis">
+      <div class="kpi"><div class="v">${esc(d.wavelet)}</div><div class="l">wavelet filter</div></div>
+      <div class="kpi"><div class="v">${d.levels}</div><div class="l">scales</div></div>
+      <div class="kpi"><div class="v">${d.n}</div><div class="l">observations</div></div></div>
+      <table class="r"><thead><tr><th>Scale</th><th>Horizon</th><th>Share of variance</th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="interp">${esc(d.series)}: ${esc(d.interpretation)}</div>`;
+  } else if(d.method==='wqte'){
+    const ps=d.per_scale.filter(s=>s.qte!=null);
+    const mx=Math.max(...ps.map(s=>s.qte),0.001);
+    const rows=ps.map(s=>`<tr><td>${esc(s.scale)}</td>
+      <td style="width:55%"><div style="display:flex;align-items:center;gap:.5rem"><div class="bar" style="flex:1"><div class="barfill" style="width:${(s.qte/mx*100).toFixed(0)}%"></div></div><span class="n" style="min-width:60px">${f(s.qte,4)}</span></div></td></tr>`).join('');
+    el.innerHTML=`<div class="kpis">
+      <div class="kpi"><div class="v">${f(d.aggregate_qte,4)}</div><div class="l">aggregate QTE</div></div>
+      <div class="kpi"><div class="v">${d.tau}</div><div class="l">tail quantile τ</div></div>
+      <div class="kpi"><div class="v">${esc(d.from)}→${esc(d.to)}</div><div class="l">direction</div></div></div>
+      <table class="r"><thead><tr><th>Scale</th><th>Directional gain</th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="interp">${esc(d.interpretation)}</div>
+      <div class="stamp" style="margin-top:.5rem">${esc(d.note||'')}</div>`;
+  } else el.innerHTML=`<pre style="font-family:var(--mono);font-size:.75rem;color:var(--mid);white-space:pre-wrap">${esc(JSON.stringify(d,null,2))}</pre>`;
+}
+
+function irfSvg(irf,shock){
+  const W=560,H=220,pad=34;
+  const all=irf.flatMap(s=>s.values);
+  const mn=Math.min(...all,0),mx=Math.max(...all,0),hN=irf[0].values.length;
+  const x=i=>pad+(i/(hN-1))*(W-2*pad), y=v=>H-pad-((v-mn)/((mx-mn)||1))*(H-2*pad);
+  const cols=['#00d4ff','#00ff88','#ffaa00','#8a2be2','#ff0040','#c9d1d9'];
+  const zero=`<line x1="${pad}" y1="${y(0)}" x2="${W-pad}" y2="${y(0)}" stroke="rgba(255,255,255,.15)" stroke-dasharray="3"/>`;
+  const lines=irf.map((s,si)=>{
+    const pts=s.values.map((v,i)=>`${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+    return `<polyline points="${pts}" fill="none" stroke="${cols[si%cols.length]}" stroke-width="2"/>`;
+  }).join('');
+  const leg=irf.map((s,si)=>`<text x="${W-pad-90}" y="${20+si*15}" fill="${cols[si%cols.length]}" font-size="11" font-family="monospace">${esc(s.response)}</text>`).join('');
+  return `<svg class="irf" viewBox="0 0 ${W} ${H}">${zero}${lines}${leg}<text x="${pad}" y="${H-8}" fill="#6b7280" font-size="10" font-family="monospace">horizon →</text></svg>`;
+}
+
+document.getElementById('run').addEventListener('click',run);
+// ── chatbot ──────────────────────────────────────────────────────────────────
+const CHIPS=["Is India's market stationary?","GARCH volatility for the UK","Wavelet variance of USA returns","Tail spillover from USA to India","VAR of India, China and Japan"];
+function chatBubble(role,html){
+  const log=document.getElementById('chat-log');
+  const d=document.createElement('div');
+  const me=role==='user';
+  d.style.cssText=`align-self:${me?'flex-end':'flex-start'};max-width:85%;padding:.6rem .85rem;border-radius:10px;font-size:.86rem;`+
+    (me?'background:rgba(0,212,255,.1);border:1px solid var(--border)':'background:rgba(0,255,136,.06);border:1px solid var(--hot)');
+  d.innerHTML=html; log.appendChild(d); log.scrollTop=log.scrollHeight; return d;
+}
+function mdLite(s){ return esc(s).replace(/\*\*(.+?)\*\*/g,'<b style="color:var(--cyan)">$1</b>').replace(/\n/g,'<br>').replace(/`([^`]+)`/g,'<code style="color:var(--green)">$1</code>'); }
+async function chatSend(msg){
+  const text=(msg||document.getElementById('chat-in').value).trim(); if(!text) return;
+  document.getElementById('chat-in').value='';
+  chatBubble('user',esc(text));
+  const thinking=chatBubble('bot','<span class="spin"></span>analysing…');
+  try{
+    const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:text})}).then(r=>r.json());
+    let html=mdLite(r.reply||r.error||'(no reply)');
+    if(r.ran&&r.ran.method) html+=`<div style="margin-top:.5rem;font-family:var(--mono);font-size:.66rem;color:var(--dim)">▸ ran <b style="color:var(--green)">${esc(r.ran.method)}</b>${r.ran.params&&r.ran.params.series?' · '+esc(JSON.stringify(r.ran.params.series)):''}${r.ran.ms?' · '+r.ran.ms+'ms · sandboxed':''}</div>`;
+    thinking.innerHTML=html; document.getElementById('chat-log').scrollTop=1e9;
+  }catch(e){ thinking.innerHTML=`<span style="color:var(--red)">error: ${esc(e.message)}</span>`; }
+}
+document.getElementById('chat-send').addEventListener('click',()=>chatSend());
+document.getElementById('chat-in').addEventListener('keydown',e=>{if(e.key==='Enter')chatSend();});
+document.getElementById('chat-chips').innerHTML=CHIPS.map(c=>`<span class="chip-q" style="cursor:pointer;font-family:var(--mono);font-size:.7rem;color:var(--cyan);border:1px solid var(--border);border-radius:6px;padding:.25rem .6rem">${esc(c)}</span>`).join('');
+document.querySelectorAll('.chip-q').forEach(el=>el.addEventListener('click',()=>chatSend(el.textContent)));
+
+boot();
+</script>
+</body>
+</html>
