@@ -159,10 +159,23 @@ function validate(methodId, params) {
 // layer reaches the net, and only to an allowlisted public host with a validated
 // symbol — no arbitrary URL, no arbitrary code. The fetched price series is
 // injected into the sandbox as a numeric array.
-const FRED_ALIAS = { // friendly name -> FRED series id (keyless, server-friendly)
-  "sp500": "SP500", "s&p500": "SP500", "s&p 500": "SP500", "spx": "SP500", "^spx": "SP500", "^gspc": "SP500",
-  "nasdaq": "NASDAQCOM", "nasdaqcom": "NASDAQCOM", "ixic": "NASDAQCOM", "^ixic": "NASDAQCOM",
-  "dow": "DJIA", "djia": "DJIA", "dow jones": "DJIA", "^dji": "DJIA", "vix": "VIXCLS", "^vix": "VIXCLS",
+// Friendly index name -> Yahoo symbol. Yahoo is the PRIMARY source (reachable
+// from Cloud Run in ~2s); FRED is a fallback only (FRED's host times out from
+// Google egress IPs). So index aliases resolve to Yahoo tickers by default.
+const YAHOO_ALIAS = {
+  "sp500": "^GSPC", "s&p500": "^GSPC", "s&p 500": "^GSPC", "spx": "^GSPC", "^spx": "^GSPC", "gspc": "^GSPC", "us": "^GSPC", "usa": "^GSPC",
+  "nasdaq": "^IXIC", "nasdaqcom": "^IXIC", "ixic": "^IXIC", "ndx": "^NDX", "nasdaq100": "^NDX",
+  "dow": "^DJI", "djia": "^DJI", "dow jones": "^DJI", "dji": "^DJI",
+  "ftse": "^FTSE", "ftse100": "^FTSE", "uk": "^FTSE",
+  "nifty": "^NSEI", "nifty50": "^NSEI", "nifty 50": "^NSEI", "sensex": "^BSESN", "india": "^NSEI",
+  "nikkei": "^N225", "japan": "^N225", "dax": "^GDAXI", "germany": "^GDAXI",
+  "cac": "^FCHI", "france": "^FCHI", "hangseng": "^HSI", "hang seng": "^HSI", "hsi": "^HSI",
+  "vix": "^VIX",
+};
+// Fallback FRED series ids for the few indices FRED actually carries.
+const FRED_ALIAS = {
+  "sp500": "SP500", "^gspc": "SP500", "s&p 500": "SP500", "spx": "SP500",
+  "nasdaq": "NASDAQCOM", "^ixic": "NASDAQCOM", "dow": "DJIA", "^dji": "DJIA", "vix": "VIXCLS",
 };
 function httpGet(url, redirects = 3) {
   return new Promise((resolve, reject) => {
@@ -177,40 +190,51 @@ function httpGet(url, redirects = 3) {
     req.end();
   });
 }
-// returns { series:[prices...], resolved, source }
+async function fetchYahoo(sym) {
+  if (!/^[A-Za-z0-9.^=_-]{1,24}$/.test(sym)) throw new Error(`invalid Yahoo symbol: ${sym}`);
+  const { status, body } = await httpGet(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=5y&interval=1d`);
+  if (status !== 200) throw new Error(`Yahoo HTTP ${status} for ${sym}`);
+  let j; try { j = JSON.parse(body); } catch { throw new Error(`Yahoo non-JSON for ${sym} (anti-bot gate?)`); }
+  const r = j?.chart?.result?.[0];
+  if (!r) throw new Error(`Yahoo: no data for ${sym}${j?.chart?.error?.description ? " — " + j.chart.error.description : ""}`);
+  const c = r?.indicators?.adjclose?.[0]?.adjclose || r?.indicators?.quote?.[0]?.close || [];
+  const vals = c.filter(v => Number.isFinite(v));
+  if (vals.length < 50) throw new Error(`Yahoo gave ${vals.length} usable points for ${sym}`);
+  return { series: vals, resolved: r.meta?.symbol || sym, source: "yahoo" };
+}
+async function fetchFred(id) {
+  if (!/^[A-Za-z0-9.^=_-]{1,24}$/.test(id)) throw new Error(`invalid FRED series id: ${id}`);
+  const { status, body } = await httpGet(`https://fred.stlouisfed.org/graph/fredgraph.csv?id=${encodeURIComponent(id)}`);
+  if (status !== 200) throw new Error(`FRED HTTP ${status} for ${id}`);
+  if (/^\s*</.test(body)) throw new Error(`FRED returned non-CSV for ${id} (unknown series id?)`);
+  const vals = [];
+  for (const ln of body.trim().split("\n").slice(1)) {
+    const v = parseFloat((ln.split(",")[1] || "").trim());   // FRED uses "." for NA -> NaN
+    if (Number.isFinite(v)) vals.push(v);
+  }
+  if (vals.length < 50) throw new Error(`FRED gave ${vals.length} usable points for ${id} (need >=50)`);
+  return { series: vals, resolved: id, source: "fred" };
+}
+// returns { series:[prices...], resolved, source }. Yahoo is primary (reachable
+// from Cloud Run); FRED is fallback (often times out from Google egress).
 async function fetchSeries(symbolRaw, sourceRaw) {
   const raw = String(symbolRaw || "").trim();
   if (!raw) throw new Error("missing symbol");
-  // default: Yahoo for tickers; auto-switch to FRED for known index aliases
-  let source = (sourceRaw || (FRED_ALIAS[raw.toLowerCase()] ? "fred" : "yahoo")).toLowerCase();
+  const key = raw.toLowerCase();
+  const explicit = sourceRaw ? String(sourceRaw).toLowerCase() : null;
 
-  if (source === "fred") {
-    const id = FRED_ALIAS[raw.toLowerCase()] || raw.toUpperCase();
-    if (!/^[A-Za-z0-9.^=_-]{1,24}$/.test(id)) throw new Error(`invalid FRED series id: ${id}`);
-    const { status, body } = await httpGet(`https://fred.stlouisfed.org/graph/fredgraph.csv?id=${encodeURIComponent(id)}`);
-    if (status !== 200) throw new Error(`FRED HTTP ${status} for ${id}`);
-    if (/^\s*</.test(body)) throw new Error(`FRED returned non-CSV for ${id} (unknown series id?)`);
-    const vals = [];
-    for (const ln of body.trim().split("\n").slice(1)) {
-      const v = parseFloat((ln.split(",")[1] || "").trim());   // FRED uses "." for NA -> NaN
-      if (Number.isFinite(v)) vals.push(v);
-    }
-    if (vals.length < 50) throw new Error(`FRED gave ${vals.length} usable points for ${id} (need >=50)`);
-    return { series: vals, resolved: id, source: "fred" };
+  if (explicit === "fred") {
+    try { return await fetchFred(FRED_ALIAS[key] || raw.toUpperCase()); }
+    catch (e) { return await fetchYahoo(YAHOO_ALIAS[key] || raw); }  // fall back to Yahoo
   }
-  if (source === "yahoo") {
-    if (!/^[A-Za-z0-9.^=_-]{1,24}$/.test(raw)) throw new Error(`invalid Yahoo symbol: ${raw}`);
-    const { status, body } = await httpGet(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(raw)}?range=5y&interval=1d`);
-    if (status !== 200) throw new Error(`Yahoo HTTP ${status} for ${raw}`);
-    let j; try { j = JSON.parse(body); } catch { throw new Error(`Yahoo non-JSON for ${raw} (anti-bot gate?)`); }
-    const r = j?.chart?.result?.[0];
-    if (!r) throw new Error(`Yahoo: no data for ${raw}${j?.chart?.error?.description ? " — " + j.chart.error.description : ""}`);
-    const c = r?.indicators?.adjclose?.[0]?.adjclose || r?.indicators?.quote?.[0]?.close || [];
-    const vals = c.filter(v => Number.isFinite(v));
-    if (vals.length < 50) throw new Error(`Yahoo gave ${vals.length} usable points for ${raw}`);
-    return { series: vals, resolved: r.meta?.symbol || raw, source: "yahoo" };
+  // default + explicit yahoo: try Yahoo first (resolve friendly index names),
+  // then FRED as a backstop for the indices it carries.
+  const ysym = YAHOO_ALIAS[key] || raw;
+  try { return await fetchYahoo(ysym); }
+  catch (e) {
+    if (FRED_ALIAS[key]) { try { return await fetchFred(FRED_ALIAS[key]); } catch {} }
+    throw e;
   }
-  throw new Error(`unknown data source: ${source} (use "yahoo" or "fred")`);
 }
 // build the JSON arg for a run, fetching + injecting live data when method.fetch
 async function buildArgsJson(method, clean) {
