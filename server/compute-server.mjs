@@ -23,6 +23,10 @@ import { request as httpsRequest } from "node:https";
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, extname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { cacheKey, cacheGet, cacheSet, rateLimit, sweep, metrics, countMethod, metricsSnapshot, clientIp, logLine } from "./guards.mjs";
+
+// per-IP rate limits (requests/min); /health + /catalog + /metrics unlimited
+const RATE = { "/api/compute/run": 20, "/api/chat": 10 };
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ENGINE_DIR = join(__dirname, "..");        // compute-engine/
@@ -381,8 +385,23 @@ const server = createServer(async (req, res) => {
   if (u.pathname === "/health")
     return send(200, "application/json", JSON.stringify({ ok: true, sandbox: HAVE_BWRAP ? "bwrap" : "timeout", methods: Object.keys(METHODS).length, timeout_s: JOB_TIMEOUT_S }));
 
+  if (u.pathname === "/metrics")
+    return send(200, "application/json", JSON.stringify(metricsSnapshot()));
+
   if (u.pathname === "/api/compute/catalog")
     return send(200, "application/json", JSON.stringify({ methods: METHODS, datasets: DATASETS }));
+
+  // ── per-IP rate limiting (before the metered routes) ──
+  const ip = clientIp(req);
+  const limit = RATE[u.pathname];
+  if (limit) {
+    const rl = rateLimit(ip, u.pathname, limit);
+    if (!rl.ok) {
+      metrics.rate_limited_total++;
+      logLine({ path: u.pathname, ip, event: "rate_limit", retry_after_seconds: rl.retry_after_seconds });
+      return send(429, "application/json", JSON.stringify({ error: "rate_limit", retry_after_seconds: rl.retry_after_seconds }));
+    }
+  }
 
   if (u.pathname === "/api/compute/run" && req.method === "POST") {
     let body = "";
@@ -394,12 +413,24 @@ const server = createServer(async (req, res) => {
       try { v = validate(payload.method, payload.params || {}); }
       catch (e) { return send(400, "application/json", JSON.stringify({ ok: false, error: e.message })); }
       const t0 = Date.now();
-      let r;
-      try { r = await runSandboxed(v.method, await buildArgsJson(v.method, v.clean)); }
-      catch (e) { r = { ok: false, error: `data fetch failed: ${e.message}` }; }
-      const rec = { id: ++jobSeq, ts: new Date().toISOString(), method: payload.method, params: v.clean, ms: Date.now() - t0, ok: r.ok, error: r.error || null };
+      metrics.requests_total++; countMethod(payload.method);
+      // ── response cache (5-min TTL; never caches errors) ──
+      const ck = cacheKey(payload.method, v.clean);
+      const cached = cacheGet(ck);
+      let r, fromCache = false;
+      if (cached) { r = cached; fromCache = true; metrics.cache_hits++; }
+      else {
+        metrics.cache_misses++;
+        try { r = await runSandboxed(v.method, await buildArgsJson(v.method, v.clean)); }
+        catch (e) { r = { ok: false, error: `data fetch failed: ${e.message}` }; }
+        cacheSet(ck, r);
+      }
+      if (!r.ok) metrics.errors_total++;
+      const ms = Date.now() - t0;
+      const rec = { id: ++jobSeq, ts: new Date().toISOString(), method: payload.method, params: v.clean, ms, ok: r.ok, error: r.error || null };
       logJob(rec);
-      return send(r.ok ? 200 : 500, "application/json", JSON.stringify({ ...r, ms: rec.ms, job_id: rec.id }));
+      logLine({ path: "/api/compute/run", method: payload.method, series: v.clean.series, symbol: v.clean.symbol, ip, ms, cached: fromCache, error: r.error || null });
+      return send(r.ok ? 200 : 500, "application/json", JSON.stringify({ ...r, ms, cached: fromCache, job_id: rec.id }));
     });
     return;
   }
@@ -411,8 +442,15 @@ const server = createServer(async (req, res) => {
     req.on("end", async () => {
       let payload;
       try { payload = JSON.parse(body || "{}"); } catch { return send(400, "application/json", JSON.stringify({ error: "bad JSON body" })); }
-      try { return send(200, "application/json", JSON.stringify(await chatTurn(payload.message || ""))); }
-      catch (e) { return send(500, "application/json", JSON.stringify({ error: e.message })); }
+      const tc = Date.now();
+      metrics.requests_total++; countMethod("chat");
+      try {
+        const out = await chatTurn(payload.message || "");
+        if (out && out.ran && out.ran.error) metrics.errors_total++;
+        logLine({ path: "/api/chat", ip, ms: Date.now() - tc, ran: out && out.ran ? out.ran.method : null });
+        return send(200, "application/json", JSON.stringify(out));
+      }
+      catch (e) { metrics.errors_total++; logLine({ path: "/api/chat", ip, ms: Date.now() - tc, error: e.message }); return send(500, "application/json", JSON.stringify({ error: e.message })); }
     });
     return;
   }
@@ -424,9 +462,13 @@ const server = createServer(async (req, res) => {
   send(404, "text/plain", "not found");
 });
 
+// periodic cleanup of expired cache + rate-limit buckets (unref'd: won't hold process open)
+setInterval(sweep, 60 * 1000).unref();
+
 server.listen(PORT, HOST, () => {
   console.log(`✓ Compute Engine on http://${HOST}:${PORT}`);
   console.log(`  sandbox: ${HAVE_BWRAP ? "bwrap (net-isolated, ro-fs)" : "timeout fallback"}`);
   console.log(`  methods: ${Object.keys(METHODS).join(", ")}`);
+  console.log(`  guards: cache(5m TTL) · rate-limit(run 20/min, chat 10/min) · /metrics`);
   console.log(`  dashboard: http://${HOST}:${PORT}/   ·   catalog: /api/compute/catalog`);
 });
