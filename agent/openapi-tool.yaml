@@ -1,0 +1,95 @@
+openapi: 3.0.0
+info:
+  title: SHSSM Compute Engine
+  version: 1.0.0
+  description: >
+    Runs open-source econometric analyses (R) on G20 daily equity log-returns
+    (18 markets, 2006-2026) in a sandboxed cloud service. Used as a tool by the
+    Vertex AI Agent Builder "Econometrics Analyst" agent.
+servers:
+  - url: https://shssm-compute-b7ui3oxaqq-el.a.run.app
+paths:
+  /api/compute/run:
+    post:
+      operationId: run_analysis
+      summary: Run one econometric analysis and return its numeric results.
+      description: >
+        Choose a method and one or more market series. Returns the computed
+        statistics as JSON. Markets allowed: Argentina, Australia, Brazil,
+        Canada, China, France, Germany, India, Indonesia, Italy, Japan, Mexico,
+        Russia, SouthAfrica, SouthKorea, Turkey, UK, USA.
+        Methods on the STORED G20 LOG-RETURNS panel (select by market name):
+        unit_root (ADF+KPSS stationarity, 1 series); var_irf (VAR + impulse
+        responses, 2-6 series); dfa_hurst (Hurst long-memory exponent, 1 series);
+        garch (GARCH(1,1) volatility persistence, 1 series); wavelet (MODWT
+        variance by time scale, 1 series); wqte (wavelet-quantile tail spillover
+        from series[0] to series[1], 2 series, optional tau).
+        LIVE method: live_unit_root fetches a live price series from a public
+        source (Yahoo Finance / FRED) by 'symbol' and runs ADF+KPSS on price
+        LEVELS and LOG-RETURNS separately. Use this for live/current data and to
+        show that price levels are non-stationary while returns are stationary.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [method, params]
+              properties:
+                method:
+                  type: string
+                  enum: [unit_root, var_irf, dfa_hurst, garch, wavelet, wqte, live_unit_root]
+                params:
+                  type: object
+                  properties:
+                    series:
+                      type: array
+                      items: { type: string }
+                      description: Stored-panel market name(s). 1 for most; 2 for wqte (from,to); 2-6 for var_irf. Not used by live_unit_root.
+                    symbol:
+                      type: string
+                      description: "live_unit_root only: ticker or index, e.g. ^FTSE, ^GSPC, AAPL, RELIANCE.NS, SP500, NASDAQCOM, DJIA."
+                    source:
+                      type: string
+                      enum: [yahoo, fred]
+                      description: "live_unit_root data source; default yahoo (FRED auto-used for SP500/NASDAQCOM/DJIA)."
+                    transform:
+                      type: string
+                      enum: [levels, returns, both]
+                      description: "live_unit_root: which to test; default both."
+                    tau:
+                      type: number
+                      description: Tail quantile for wqte (e.g. 0.05).
+                    lags: { type: integer }
+                    p: { type: integer }
+                    q: { type: integer }
+                    irf_h: { type: integer }
+                    levels: { type: integer }
+      responses:
+        "200":
+          description: Analysis result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  ms: { type: integer }
+                  sandbox: { type: string }
+                  result:
+                    type: object
+                    description: Method-specific result object (statistics, interpretation, etc.)
+        "400":
+          description: Invalid method or parameters
+        "500":
+          description: Analysis failed
+  /api/compute/catalog:
+    get:
+      operationId: list_methods
+      summary: List available analysis methods and datasets.
+      responses:
+        "200":
+          description: Catalog of methods + datasets
+          content:
+            application/json:
+              schema: { type: object }

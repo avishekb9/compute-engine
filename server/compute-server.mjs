@@ -28,7 +28,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ENGINE_DIR = join(__dirname, "..");        // compute-engine/
 const R_DIR = join(ENGINE_DIR, "r");
 const WEB_DIR = join(ENGINE_DIR, "web");
-const REPO = join(ENGINE_DIR, "..");             // ivy-fineco/
+// Data root holding papers/contagion-channels/data/G20.xlsx. Honor an explicit
+// COMPUTE_REPO (set in the Cloud Run image to /app/data-root); else infer the
+// monorepo parent for local runs.
+const REPO = process.env.COMPUTE_REPO || join(ENGINE_DIR, "..");  // ivy-fineco/ (local) or /app/data-root (container)
 
 const PORT = parseInt(process.env.PORT || "3200", 10);
 const HOST = process.env.HOST || "127.0.0.1";
@@ -92,6 +95,17 @@ const METHODS = {
     desc: "Directional wavelet-quantile dependence X→Y at a tail quantile, per scale. contagion-channels / WaveQTE primitive.",
     params: { series: { type: "series", n: 2, required: true }, tau: { type: "num", optional: true }, levels: { type: "int", optional: true } },
   },
+  live_unit_root: {
+    runner: "r", script: "live_adf.R", fetch: true,
+    label: "Live Stationarity — Levels vs Returns (ADF + KPSS)",
+    category: "Time Series · Live Data",
+    desc: "Fetches a LIVE price series from a public source (Yahoo Finance / FRED) and runs ADF+KPSS on price LEVELS and LOG-RETURNS separately. Price levels are I(1)/non-stationary; returns are stationary.",
+    params: {
+      symbol:    { type: "symbol", required: true },
+      source:    { type: "enum", values: ["yahoo", "fred"], optional: true },
+      transform: { type: "enum", values: ["levels", "returns", "both"], optional: true },
+    },
+  },
 };
 
 const DATASETS = {
@@ -125,11 +139,84 @@ function validate(methodId, params) {
       const x = Number(v);
       if (!Number.isFinite(x)) throw new Error(`'${k}' must be a number`);
       clean[k] = x;
+    } else if (spec.type === "symbol") {
+      const s = String(v).trim();
+      if (!/^[A-Za-z0-9 .^=_&-]{1,32}$/.test(s)) throw new Error(`'${k}' is not a valid ticker/name`);
+      clean[k] = s;
+    } else if (spec.type === "enum") {
+      const s = String(v).trim().toLowerCase();
+      if (!spec.values.includes(s)) throw new Error(`'${k}' must be one of: ${spec.values.join(", ")}`);
+      clean[k] = s;
     }
   }
   // optional date window passthrough (validated as ISO-ish strings only)
   for (const k of ["start", "end"]) if (typeof params[k] === "string" && /^\d{4}-\d{2}-\d{2}$/.test(params[k])) clean[k] = params[k];
   return { method: m, clean };
+}
+
+// ── live market-data fetch (TRUSTED orchestrator only) ─────────────────────────
+// The R sandbox stays network-isolated (--unshare-net). Only this trusted Node
+// layer reaches the net, and only to an allowlisted public host with a validated
+// symbol — no arbitrary URL, no arbitrary code. The fetched price series is
+// injected into the sandbox as a numeric array.
+const FRED_ALIAS = { // friendly name -> FRED series id (keyless, server-friendly)
+  "sp500": "SP500", "s&p500": "SP500", "s&p 500": "SP500", "spx": "SP500", "^spx": "SP500", "^gspc": "SP500",
+  "nasdaq": "NASDAQCOM", "nasdaqcom": "NASDAQCOM", "ixic": "NASDAQCOM", "^ixic": "NASDAQCOM",
+  "dow": "DJIA", "djia": "DJIA", "dow jones": "DJIA", "^dji": "DJIA", "vix": "VIXCLS", "^vix": "VIXCLS",
+};
+function httpGet(url, redirects = 3) {
+  return new Promise((resolve, reject) => {
+    const req = httpsRequest(url, { method: "GET", headers: { "User-Agent": "Mozilla/5.0 (SHSSM-compute-engine)" } }, (r) => {
+      if (r.statusCode >= 300 && r.statusCode < 400 && r.headers.location && redirects > 0) {
+        r.resume(); return httpGet(new URL(r.headers.location, url).toString(), redirects - 1).then(resolve, reject);
+      }
+      let b = ""; r.on("data", d => (b += d)); r.on("end", () => resolve({ status: r.statusCode, body: b }));
+    });
+    req.on("error", reject);
+    req.setTimeout(20000, () => req.destroy(new Error("data-source fetch timeout")));
+    req.end();
+  });
+}
+// returns { series:[prices...], resolved, source }
+async function fetchSeries(symbolRaw, sourceRaw) {
+  const raw = String(symbolRaw || "").trim();
+  if (!raw) throw new Error("missing symbol");
+  // default: Yahoo for tickers; auto-switch to FRED for known index aliases
+  let source = (sourceRaw || (FRED_ALIAS[raw.toLowerCase()] ? "fred" : "yahoo")).toLowerCase();
+
+  if (source === "fred") {
+    const id = FRED_ALIAS[raw.toLowerCase()] || raw.toUpperCase();
+    if (!/^[A-Za-z0-9.^=_-]{1,24}$/.test(id)) throw new Error(`invalid FRED series id: ${id}`);
+    const { status, body } = await httpGet(`https://fred.stlouisfed.org/graph/fredgraph.csv?id=${encodeURIComponent(id)}`);
+    if (status !== 200) throw new Error(`FRED HTTP ${status} for ${id}`);
+    if (/^\s*</.test(body)) throw new Error(`FRED returned non-CSV for ${id} (unknown series id?)`);
+    const vals = [];
+    for (const ln of body.trim().split("\n").slice(1)) {
+      const v = parseFloat((ln.split(",")[1] || "").trim());   // FRED uses "." for NA -> NaN
+      if (Number.isFinite(v)) vals.push(v);
+    }
+    if (vals.length < 50) throw new Error(`FRED gave ${vals.length} usable points for ${id} (need >=50)`);
+    return { series: vals, resolved: id, source: "fred" };
+  }
+  if (source === "yahoo") {
+    if (!/^[A-Za-z0-9.^=_-]{1,24}$/.test(raw)) throw new Error(`invalid Yahoo symbol: ${raw}`);
+    const { status, body } = await httpGet(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(raw)}?range=5y&interval=1d`);
+    if (status !== 200) throw new Error(`Yahoo HTTP ${status} for ${raw}`);
+    let j; try { j = JSON.parse(body); } catch { throw new Error(`Yahoo non-JSON for ${raw} (anti-bot gate?)`); }
+    const r = j?.chart?.result?.[0];
+    if (!r) throw new Error(`Yahoo: no data for ${raw}${j?.chart?.error?.description ? " — " + j.chart.error.description : ""}`);
+    const c = r?.indicators?.adjclose?.[0]?.adjclose || r?.indicators?.quote?.[0]?.close || [];
+    const vals = c.filter(v => Number.isFinite(v));
+    if (vals.length < 50) throw new Error(`Yahoo gave ${vals.length} usable points for ${raw}`);
+    return { series: vals, resolved: r.meta?.symbol || raw, source: "yahoo" };
+  }
+  throw new Error(`unknown data source: ${source} (use "yahoo" or "fred")`);
+}
+// build the JSON arg for a run, fetching + injecting live data when method.fetch
+async function buildArgsJson(method, clean) {
+  if (!method.fetch) return JSON.stringify(clean);
+  const { series, resolved, source } = await fetchSeries(clean.symbol, clean.source);
+  return JSON.stringify({ ...clean, levels: series, symbol: resolved, source });
 }
 
 // ── sandboxed runner ───────────────────────────────────────────────────────────
@@ -199,20 +286,36 @@ function geminiCall(payload) {
 function chatTools() {
   return [{ functionDeclarations: [{
     name: "run_analysis",
-    description: "Run a sandboxed econometric analysis on G20 daily equity log-returns (2006-2026). " +
+    description: "Run a sandboxed econometric analysis. Stored-panel methods use G20 daily equity LOG-RETURNS (2006-2026, by market name). live_unit_root fetches a LIVE price series from a public source and tests price LEVELS vs LOG-RETURNS. " +
       Object.entries(METHODS).map(([k, m]) => `${k}=${m.label}`).join("; "),
     parameters: { type: "object", properties: {
       method: { type: "string", enum: Object.keys(METHODS) },
-      series: { type: "array", items: { type: "string", enum: DATASETS.g20.series }, description: "1 market for most; 2 for wqte (from,to); 2-6 for var_irf" },
+      series: { type: "array", items: { type: "string", enum: DATASETS.g20.series }, description: "stored-panel market(s): 1 for most; 2 for wqte (from,to); 2-6 for var_irf. NOT used by live_unit_root." },
+      symbol: { type: "string", description: "live_unit_root only: ticker or index, e.g. ^FTSE, ^GSPC, AAPL, RELIANCE.NS, SP500, NASDAQCOM, DJIA" },
+      source: { type: "string", enum: ["yahoo", "fred"], description: "live_unit_root data source; default yahoo (FRED auto-used for SP500/NASDAQCOM/DJIA)" },
+      transform: { type: "string", enum: ["levels", "returns", "both"], description: "live_unit_root: which to test; default both" },
       tau: { type: "number" }, lags: { type: "integer" }, p: { type: "integer" }, q: { type: "integer" }, irf_h: { type: "integer" }, levels: { type: "integer" },
-    }, required: ["method", "series"] },
+    }, required: ["method"] },
   }] }];
 }
-const CHAT_SYS = "You are the analyst assistant for the SHSSM Compute Engine, a sandboxed open-source " +
-  "econometrics workbench over G20 equity returns. When the user asks for an analysis, call run_analysis " +
-  "with the right method and market series. Markets: " + DATASETS.g20.series.join(", ") + ". After the tool " +
-  "returns numbers, explain them concisely for a finance researcher (what the statistic means + the verdict). " +
-  "If the request is conceptual, answer directly without a tool call.";
+const CHAT_SYS = "You are the SHSSM Econometrics Analyst, a careful financial econometrician at the School of " +
+  "Humanities, Social Sciences & Management, IIT Bhubaneswar. You are NOT a generic chatbot; if asked who you " +
+  "are, identify yourself as the SHSSM Econometrics Analyst (do not say you are a model trained by Google). You " +
+  "answer econometrics/finance questions and run real sandboxed R via the run_analysis tool.\n\n" +
+  "CRITICAL STATIONARITY ECONOMICS — never get this wrong:\n" +
+  "- Equity PRICE LEVELS are non-stationary: they have a unit root (I(1), random-walk-with-drift). Never call a " +
+  "price level stationary.\n" +
+  "- LOG-RETURNS = diff(log(price)) are typically stationary (I(0)). Model and report on RETURNS, not price levels.\n" +
+  "- The stored G20 panel (methods unit_root, var_irf, dfa_hurst, garch, wavelet, wqte; selected by market NAME " +
+  "like India/USA/UK) is ALREADY log-returns, so any 'stationary' verdict there is about RETURNS — always say so " +
+  "explicitly (e.g. 'UK equity RETURNS are stationary', never 'the UK equity market is stationary').\n" +
+  "- For LIVE data use method=live_unit_root with a symbol (e.g. ^FTSE, ^GSPC, AAPL, RELIANCE.NS, or SP500 via FRED). " +
+  "It returns separate results for price LEVELS and LOG-RETURNS; report the contrast — levels non-stationary " +
+  "(fails to reject the unit root), returns stationary — and explain that this is exactly why we difference prices " +
+  "to returns.\n\n" +
+  "Stored-panel markets: " + DATASETS.g20.series.join(", ") + ". After the tool returns numbers, explain them " +
+  "concisely for a finance researcher (what each statistic means + the verdict, naming whether it was levels or " +
+  "returns). If a request is conceptual, answer directly without a tool call.";
 async function chatTurn(message) {
   if (!message.trim()) return { reply: "Ask me to run an analysis, e.g. 'ADF test on India returns' or 'wavelet variance for USA'.", ran: null };
   const contents = [{ role: "user", parts: [{ text: message }] }];
@@ -223,7 +326,9 @@ async function chatTurn(message) {
   let v;
   try { v = validate(fc.args.method, fc.args); }
   catch (e) { return { reply: `I tried ${fc.args.method} but the parameters were invalid: ${e.message}`, ran: { method: fc.args.method, error: e.message } }; }
-  const run = await runSandboxed(v.method, JSON.stringify(v.clean));
+  let run;
+  try { run = await runSandboxed(v.method, await buildArgsJson(v.method, v.clean)); }
+  catch (e) { run = { ok: false, error: `data fetch failed: ${e.message}` }; }
   if (!run.ok) return { reply: `The ${fc.args.method} analysis failed: ${run.error}`, ran: { method: fc.args.method, error: run.error } };
   const contents2 = [
     ...contents,
@@ -265,7 +370,9 @@ const server = createServer(async (req, res) => {
       try { v = validate(payload.method, payload.params || {}); }
       catch (e) { return send(400, "application/json", JSON.stringify({ ok: false, error: e.message })); }
       const t0 = Date.now();
-      const r = await runSandboxed(v.method, JSON.stringify(v.clean));
+      let r;
+      try { r = await runSandboxed(v.method, await buildArgsJson(v.method, v.clean)); }
+      catch (e) { r = { ok: false, error: `data fetch failed: ${e.message}` }; }
       const rec = { id: ++jobSeq, ts: new Date().toISOString(), method: payload.method, params: v.clean, ms: Date.now() - t0, ok: r.ok, error: r.error || null };
       logJob(rec);
       return send(r.ok ? 200 : 500, "application/json", JSON.stringify({ ...r, ms: rec.ms, job_id: rec.id }));
