@@ -21,6 +21,14 @@ DATA="$REPO/papers/contagion-channels/data/G20.xlsx"
 
 [ -f "$DATA" ] || { echo "ERROR: G20 data not found at $DATA"; exit 1; }
 
+# GOOGLE_API_KEY enables the /api/chat Gemini analyst. Read from env or
+# versiondevs/.env.local (one level above ivy-fineco); never printed/committed.
+KEY="${GOOGLE_API_KEY:-}"
+if [ -z "$KEY" ] && [ -f "$REPO/../.env.local" ]; then
+  KEY=$(grep '^GOOGLE_API_KEY=' "$REPO/../.env.local" | cut -d= -f2- | tr -d '"' | tr -d "'")
+fi
+[ -z "$KEY" ] && echo "WARN: GOOGLE_API_KEY not found — /api/chat will be disabled on this revision."
+
 BUILD="$(mktemp -d)"
 trap 'rm -rf "$BUILD"' EXIT
 cp -r "$ENGINE/server" "$ENGINE/r" "$ENGINE/web" "$ENGINE/py" "$BUILD/"
@@ -37,7 +45,7 @@ gcloud run deploy "$SERVICE" \
   --allow-unauthenticated \
   --memory 2Gi --cpu 2 --timeout 120 \
   --min-instances 0 --max-instances 2 \
-  --set-env-vars "HOST=0.0.0.0,COMPUTE_TIMEOUT_S=90" \
+  --set-env-vars "HOST=0.0.0.0,COMPUTE_TIMEOUT_S=90${KEY:+,GOOGLE_API_KEY=$KEY}" \
   --quiet
 
 echo "URL:"

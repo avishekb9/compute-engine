@@ -382,6 +382,18 @@ const server = createServer(async (req, res) => {
   const u = new URL(req.url, `http://${req.headers.host}`);
   const send = (c, t, b) => { res.writeHead(c, { "Content-Type": t, "Access-Control-Allow-Origin": "*" }); res.end(b); };
 
+  // CORS preflight: browsers send OPTIONS before a cross-origin JSON POST.
+  // Without this the SPA (GitHub Pages) gets "Failed to fetch" on /api/compute/run + /api/chat.
+  if (req.method === "OPTIONS") {
+    res.writeHead(204, {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+      "Access-Control-Max-Age": "86400",
+    });
+    return res.end();
+  }
+
   if (u.pathname === "/health")
     return send(200, "application/json", JSON.stringify({ ok: true, sandbox: HAVE_BWRAP ? "bwrap" : "timeout", methods: Object.keys(METHODS).length, timeout_s: JOB_TIMEOUT_S }));
 
