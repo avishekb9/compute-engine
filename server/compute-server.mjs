@@ -99,6 +99,48 @@ const METHODS = {
     desc: "Directional wavelet-quantile dependence X→Y at a tail quantile, per scale. contagion-channels / WaveQTE primitive.",
     params: { series: { type: "series", n: 2, required: true }, tau: { type: "num", optional: true }, levels: { type: "int", optional: true } },
   },
+  vecm: {
+    runner: "r", script: "vecm.R",
+    label: "Cointegration (Johansen VECM)",
+    category: "Time Series · Cointegration",
+    desc: "Johansen trace-test cointegration rank among 2–6 series (urca::ca.jo). EViews 'Johansen Cointegration Test'.",
+    params: { series: { type: "series", n: [2, 6], required: true }, K: { type: "int", optional: true }, ecdet: { type: "enum", values: ["none", "const", "trend"], optional: true } },
+  },
+  granger: {
+    runner: "r", script: "granger.R",
+    label: "Granger-Causality Network",
+    category: "Time Series · Causality",
+    desc: "Pairwise Granger-causality tests over 2–8 series → directed edges + in/out degree. RATS/EViews 'Granger Causality'.",
+    params: { series: { type: "series", n: [2, 8], required: true }, lag: { type: "int", optional: true }, alpha: { type: "num", optional: true } },
+  },
+  panel_unit_root: {
+    runner: "r", script: "panel_unit_root.R",
+    label: "Panel Unit Root (IPS + LLC)",
+    category: "Panel · Stationarity",
+    desc: "Im-Pesaran-Shin and Levin-Lin-Chu panel unit-root tests over 2–18 series (plm::purtest).",
+    params: { series: { type: "series", n: [2, 18], required: true }, lags: { type: "enum", values: ["aic", "sic", "hall"], optional: true } },
+  },
+  connectedness: {
+    runner: "r", script: "connectedness.R",
+    label: "Connectedness (Diebold-Yilmaz + Barunik-Krehlik)",
+    category: "Contagion · Spillover",
+    desc: "Total/directional connectedness from a generalized FEVD (Diebold-Yilmaz 2012) plus a short/medium/long frequency decomposition (Barunik-Krehlik 2018). Core spillover primitive.",
+    params: { series: { type: "series", n: [2, 8], required: true }, p: { type: "int", optional: true }, H: { type: "int", optional: true } },
+  },
+  network: {
+    runner: "r", script: "network.R",
+    label: "Dependency Network (igraph)",
+    category: "Network · Topology",
+    desc: "Builds a directed Granger network over 3–12 series and returns centralities (degree/betweenness/eigenvector), Walktrap communities, and force-directed layout coordinates for client-side SVG.",
+    params: { series: { type: "series", n: [3, 12], required: true }, lag: { type: "int", optional: true }, alpha: { type: "num", optional: true } },
+  },
+  rolling_dcc: {
+    runner: "r", script: "rolling_dcc.R",
+    label: "DCC-GARCH Dynamic Correlation",
+    category: "Volatility · Time-Varying Correlation",
+    desc: "Engle (2002) DCC-GARCH(1,1) time-varying conditional correlations across 2–4 series (rmgarch); returns the per-pair correlation-path summary.",
+    params: { series: { type: "series", n: [2, 4], required: true } },
+  },
   live_unit_root: {
     runner: "r", script: "live_adf.R", fetch: true,
     label: "Live Stationarity — Levels vs Returns (ADF + KPSS)",
@@ -323,6 +365,9 @@ function chatTools() {
       source: { type: "string", enum: ["yahoo", "fred"], description: "live_unit_root data source; default yahoo (FRED auto-used for SP500/NASDAQCOM/DJIA)" },
       transform: { type: "string", enum: ["levels", "returns", "both"], description: "live_unit_root: which to test; default both" },
       tau: { type: "number" }, lags: { type: "integer" }, p: { type: "integer" }, q: { type: "integer" }, irf_h: { type: "integer" }, levels: { type: "integer" },
+      K: { type: "integer", description: "vecm: VAR lag order" }, ecdet: { type: "string", enum: ["none", "const", "trend"], description: "vecm: deterministic term" },
+      lag: { type: "integer", description: "granger/network: Granger lag order" }, alpha: { type: "number", description: "granger/network: edge significance level" },
+      H: { type: "integer", description: "connectedness: GFEVD horizon" },
     }, required: ["method"] },
   }] }];
 }
