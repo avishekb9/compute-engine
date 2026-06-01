@@ -26,7 +26,7 @@ import { fileURLToPath } from "node:url";
 import { cacheKey, cacheGet, cacheSet, rateLimit, sweep, metrics, countMethod, metricsSnapshot, clientIp, logLine } from "./guards.mjs";
 
 // per-IP rate limits (requests/min); /health + /catalog + /metrics unlimited
-const RATE = { "/api/compute/run": 20, "/api/chat": 10 };
+const RATE = { "/api/compute/run": 20, "/api/chat": 10, "/api/research": 5 };
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ENGINE_DIR = join(__dirname, "..");        // compute-engine/
@@ -41,7 +41,8 @@ const PORT = parseInt(process.env.PORT || "3200", 10);
 const HOST = process.env.HOST || "127.0.0.1";
 const JOB_TIMEOUT_S = parseInt(process.env.COMPUTE_TIMEOUT_S || "60", 10);
 const HAVE_BWRAP = (() => { try { return existsSync("/usr/bin/bwrap") || existsSync("/bin/bwrap"); } catch { return false; } })();
-const GEMINI_MODEL = "gemini-2.5-flash";
+const GEMINI_MODEL = "gemini-2.5-flash";          // fast chat analyst
+const RESEARCH_MODEL = "gemini-2.5-pro";          // deep-research assistant (/api/research)
 function loadGoogleKey() {
   if (process.env.GOOGLE_API_KEY) return process.env.GOOGLE_API_KEY;
   try {
@@ -340,16 +341,18 @@ function runSandboxed(method, paramsJson) {
 // User types natural language; Gemini maps it to run_analysis(method,series,…)
 // against the SAME validated registry the UI uses; we execute in the sandbox;
 // Gemini then explains the numbers. No arbitrary code — only registered methods.
-function geminiCall(payload) {
+function geminiCall(payload, opts = {}) {
+  const model = opts.model || GEMINI_MODEL;
+  const timeoutMs = opts.timeoutMs || 30000;
   return new Promise((resolve, reject) => {
     if (!GOOGLE_KEY) return reject(new Error("GOOGLE_API_KEY not available"));
     const data = Buffer.from(JSON.stringify(payload));
-    const u = new URL(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GOOGLE_KEY}`);
+    const u = new URL(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GOOGLE_KEY}`);
     const r = httpsRequest(u, { method: "POST", headers: { "Content-Type": "application/json", "Content-Length": data.length } }, res => {
       let b = ""; res.on("data", c => (b += c));
       res.on("end", () => { try { resolve(JSON.parse(b)); } catch { reject(new Error("gemini bad JSON")); } });
     });
-    r.on("error", reject); r.setTimeout(30000, () => r.destroy(new Error("gemini timeout")));
+    r.on("error", reject); r.setTimeout(timeoutMs, () => r.destroy(new Error("gemini timeout")));
     r.write(data); r.end();
   });
 }
@@ -411,6 +414,111 @@ async function chatTurn(message) {
   const r2 = await geminiCall({ systemInstruction: { parts: [{ text: CHAT_SYS }] }, contents: contents2, generationConfig: { temperature: 0.3 } });
   const reply = (r2?.candidates?.[0]?.content?.parts || []).map(p => p.text).filter(Boolean).join("") || "(analysis complete)";
   return { reply, ran: { method: fc.args.method, params: v.clean, result: run.result, ms: run.ms } };
+}
+
+// ── deep-research assistant (/api/research) ───────────────────────────────────
+// Gemini 2.5 PRO (not Flash) positioned as a post-doctoral computational
+// economist with the full research context injected. Two robust phases:
+//   A. agentic run_analysis loop — run live econometrics where the question admits it
+//   B. grounded synthesis — google_search for REAL citations, final co-author answer
+// Tools aren't combined in one request (a known API fragility); the executed
+// analyses are summarised into Phase B as context instead.
+const RESEARCH_SYS =
+  "You are a post-doctoral research fellow in computational economics and financial econometrics, " +
+  "collaborating with Dr. Avishek Bhandari at SHSSM, IIT Bhubaneswar. Your expertise spans network " +
+  "econometrics, information-theoretic finance, wavelet analysis, systemic risk, and AI-economics. You reason " +
+  "at publication standard — every claim grounded, every result verified, every interpretation precise. You give " +
+  "the honest expert view a co-author would give, not an agreeable chatbot answer. If asked who you are, identify " +
+  "as the SHSSM post-doctoral research fellow (never say you are a model trained by Google).\n\n" +
+  "You can execute LIVE econometric analyses via the run_analysis tool against a sandboxed R engine over a G20 " +
+  "daily equity panel (2006-2026, already LOG-RETURNS). A live result beats a theoretical answer — run one when " +
+  "the question admits it. Available methods: " + Object.entries(METHODS).map(([k, m]) => `${k} (${m.label})`).join("; ") + ". " +
+  "Stored-panel markets: " + DATASETS.g20.series.join(", ") + ".\n\n" +
+  "=== 8-PRIMITIVE SUBSTRATE (methodological core threaded through every framework) ===\n" +
+  "1. Long-memory estimation (DFA / GPH / Qu) — fractal scaling, Hurst exponent.\n" +
+  "2. MODWT wavelet decomposition — variance across time scales (d1 approx 2-4d ... long horizons).\n" +
+  "3. Transfer entropy (KSG / binned / quantile) — directional, nonlinear information flow.\n" +
+  "4. Surrogate inference (IAAFT / bootstrap) — significance vs nonlinearity-preserving nulls.\n" +
+  "5. Community detection (Leiden / Walktrap / CNM) — meso-scale network structure.\n" +
+  "6. Network-formation game theory — endogenous edge-formation models.\n" +
+  "7. Structural attribution (IV / 2SLS / LASSO / local projections) — causal channel identification.\n" +
+  "8. Classifier validation (ROC / DeLong) — out-of-sample discriminative power with inference.\n\n" +
+  "=== 5 FRAMEWORKS (verified artifacts only — never invent a citation) ===\n" +
+  "- NAMH (Network Adaptive Market Hypothesis): working paper, internal. Adaptive markets x network econometrics.\n" +
+  "- MCPFM (Multi-Channel Path Following Model): arXiv:2507.08065. Systemic-risk index; SRI AUC 0.915 (US/COVID), 0.581 (India/trade-war).\n" +
+  "- contagion-channels: arXiv:2604.26546; CRAN package contagionchannels v0.1.3. Channel-level contagion identification.\n" +
+  "- WaveQTE (wavelet-quantile transfer entropy): working paper; CRAN WaveQTE + WaveQTEX. Scale- and tail-resolved spillover.\n" +
+  "- commodity: working paper; CRAN commodityFC (WIP). Commodity forecasting on the same substrate.\n\n" +
+  "=== VERIFIED EMPIRICAL RESULTS (immutable — quote exactly, never alter) ===\n" +
+  "- India equity-returns ADF = -49.18 (stationary).  - UK equity-returns ADF = -52.64 (stationary).\n" +
+  "- GARCH(1,1) India: alpha+beta = 0.991 (near-unit persistence).  - MODWT India: d1 = 47.07% of return variance.\n" +
+  "- WQTE USA->India: tau=0.05 aggregate = 0.039.  - VAR(India,USA,UK): lag=7, stable, max root = 0.705.\n" +
+  "- MCPFM SRI AUC: 0.915 (US/COVID), 0.581 (India/trade-war).\n\n" +
+  "=== STATIONARITY RULE (never violate) ===\n" +
+  "Equity PRICE LEVELS are I(1) / non-stationary (unit root, random walk with drift). LOG-RETURNS = diff(log price) " +
+  "are typically I(0) / stationary. Never call a price level stationary. The stored G20 panel is ALREADY log-returns, " +
+  "so any 'stationary' verdict there is about RETURNS — say so explicitly (e.g. 'UK equity RETURNS are stationary').\n\n" +
+  "=== INTEGRITY ===\n" +
+  "Cite only literature you can verify exists (use search). Never fabricate an author, year, journal, DOI, or finding. " +
+  "If uncertain, say so. If a claim cannot be grounded, label it as your reasoning, not an established result. Flag any " +
+  "inconsistency you notice between a new result and the verified results above.";
+
+async function researchTurn(query, userContext) {
+  if (!query || !query.trim()) return { error: "empty query" };
+  const ctxPrefix = userContext && String(userContext).trim() ? `Context from the researcher: ${userContext}\n\n` : "";
+  const analyses = [];
+
+  // ── Phase A: agentic run_analysis loop (function tool only) ──
+  const contents = [{ role: "user", parts: [{ text: ctxPrefix + query }] }];
+  const MAX_STEPS = 3;
+  for (let step = 0; step < MAX_STEPS; step++) {
+    let r1;
+    try { r1 = await geminiCall({ systemInstruction: { parts: [{ text: RESEARCH_SYS }] }, contents, tools: chatTools(), generationConfig: { temperature: 0.2 } }, { model: RESEARCH_MODEL, timeoutMs: 55000 }); }
+    catch (e) { break; }   // network/timeout — proceed to synthesis with whatever we have
+    const parts = r1?.candidates?.[0]?.content?.parts || [];
+    const calls = parts.filter(p => p.functionCall).map(p => p.functionCall);
+    contents.push({ role: "model", parts });
+    if (!calls.length) break;                              // model is done running analyses
+    const respParts = [];
+    for (const fc of calls) {
+      try {
+        const v = validate(fc.args.method, fc.args);
+        const run = await runSandboxed(v.method, await buildArgsJson(v.method, v.clean));
+        if (run.ok) { analyses.push({ method: fc.args.method, params: v.clean, result: run.result, ms: run.ms }); respParts.push({ functionResponse: { name: "run_analysis", response: { result: run.result } } }); }
+        else { analyses.push({ method: fc.args.method, params: v.clean, error: run.error }); respParts.push({ functionResponse: { name: "run_analysis", response: { error: run.error } } }); }
+      } catch (e) {
+        analyses.push({ method: fc.args?.method, error: e.message });
+        respParts.push({ functionResponse: { name: "run_analysis", response: { error: e.message } } });
+      }
+    }
+    contents.push({ role: "function", parts: respParts });
+  }
+
+  // ── Phase B: grounded synthesis (google_search only; analyses summarised in) ──
+  const digest = analyses.length
+    ? "LIVE ANALYSES EXECUTED THIS SESSION (real numbers from the sandboxed R engine — use exactly, do not alter):\n" +
+      analyses.map(a => a.error
+        ? `- ${a.method}(${JSON.stringify(a.params || {})}) -> FAILED: ${a.error}`
+        : `- ${a.method}(${JSON.stringify(a.params)}) -> ${JSON.stringify(a.result).slice(0, 1400)}`).join("\n")
+    : "No live analyses were run for this query (it was conceptual or did not require the engine).";
+  const synthContents = [{ role: "user", parts: [{ text:
+    ctxPrefix + `Research question: ${query}\n\n${digest}\n\n` +
+    "Write the definitive answer a co-author would give: rigorous, economically interpreted, explicit about " +
+    "assumptions and limitations. Ground empirical claims in the live analyses above where relevant. Run at least one " +
+    "literature search to ground your answer in real sources — do this even for conceptual questions, so you name the " +
+    "actual foundational works rather than answering citation-free. You may name a canonical, well-established " +
+    "foundational paper from your own knowledge, but verify anything specific, recent, or obscure via search before " +
+    "naming it. Never invent an author, year, journal, DOI, or result. Where you cite, name the work inline so the " +
+    "reader can find it." }] }];
+  let r2;
+  try { r2 = await geminiCall({ systemInstruction: { parts: [{ text: RESEARCH_SYS }] }, contents: synthContents, tools: [{ google_search: {} }], generationConfig: { temperature: 0.3 } }, { model: RESEARCH_MODEL, timeoutMs: 55000 }); }
+  catch (e) { return { error: `synthesis failed: ${e.message}`, analyses, model: RESEARCH_MODEL }; }
+  const cand = r2?.candidates?.[0];
+  const answer = (cand?.content?.parts || []).map(p => p.text).filter(Boolean).join("") || "(no answer generated)";
+  const gm = cand?.groundingMetadata || {};
+  const citations = (gm.groundingChunks || []).map(c => ({ title: c.web?.title || null, uri: c.web?.uri || null })).filter(c => c.uri);
+  const searches = gm.webSearchQueries || [];
+  return { answer, citations, searches, analyses, model: RESEARCH_MODEL, steps: analyses.length };
 }
 
 // ── job log ─────────────────────────────────────────────────────────────────────
@@ -508,6 +616,28 @@ const server = createServer(async (req, res) => {
         return send(200, "application/json", JSON.stringify(out));
       }
       catch (e) { metrics.errors_total++; logLine({ path: "/api/chat", ip, ms: Date.now() - tc, error: e.message }); return send(500, "application/json", JSON.stringify({ error: e.message })); }
+    });
+    return;
+  }
+
+  // deep-research assistant: Gemini 2.5 Pro + run_analysis + grounded citations
+  if (u.pathname === "/api/research" && req.method === "POST") {
+    let body = "";
+    req.on("data", d => (body += d));
+    req.on("end", async () => {
+      let payload;
+      try { payload = JSON.parse(body || "{}"); } catch { return send(400, "application/json", JSON.stringify({ error: "bad JSON body" })); }
+      if (!GOOGLE_KEY) return send(503, "application/json", JSON.stringify({ error: "research assistant unavailable (no GOOGLE_API_KEY on this revision)" }));
+      if (!payload.query || !String(payload.query).trim()) return send(400, "application/json", JSON.stringify({ error: "missing 'query'" }));
+      const tr = Date.now();
+      metrics.requests_total++; countMethod("research");
+      try {
+        const out = await researchTurn(String(payload.query), payload.context);
+        if (out.error) metrics.errors_total++;
+        logLine({ path: "/api/research", ip, ms: Date.now() - tr, steps: out.steps ?? null, citations: out.citations ? out.citations.length : 0, error: out.error || null });
+        return send(out.error ? 500 : 200, "application/json", JSON.stringify({ ...out, ms: Date.now() - tr }));
+      }
+      catch (e) { metrics.errors_total++; logLine({ path: "/api/research", ip, ms: Date.now() - tr, error: e.message }); return send(500, "application/json", JSON.stringify({ error: e.message })); }
     });
     return;
   }

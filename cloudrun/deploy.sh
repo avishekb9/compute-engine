@@ -43,7 +43,7 @@ gcloud run deploy "$SERVICE" \
   --region "$REGION" \
   --account "$ACCOUNT" \
   --allow-unauthenticated \
-  --memory 2Gi --cpu 2 --timeout 120 \
+  --memory 2Gi --cpu 2 --timeout 300 \
   --min-instances 0 --max-instances 2 \
   --set-env-vars "HOST=0.0.0.0,COMPUTE_TIMEOUT_S=90${KEY:+,GOOGLE_API_KEY=$KEY}" \
   --quiet
