@@ -18,11 +18,11 @@ K <- if (!is.null(p$K)) max(2L, as.integer(p$K)) else 2L
 ecdet <- if (!is.null(p$ecdet) && p$ecdet %in% c("none","const","trend")) p$ecdet else "const"
 
 jo <- urca::ca.jo(Y, type = "trace", ecdet = ecdet, K = K, spec = "longrun")
-teststat <- as.numeric(jo@teststat)                 # length k, descending r = k-1 .. 0
-cv5 <- as.numeric(jo@cval[, "5pct"])                 # matching critical values
+teststat <- as.numeric(jo@teststat)                 # ca.jo order: r<=k-1 first ... r=0 last
+cv5 <- as.numeric(jo@cval[, "5pct"])                 # matching critical values, same order
 k <- ncol(Y)
-## rank r = number of hypotheses r<=i rejected (teststat > cv) reading from r=0 up.
-## ca.jo orders rows r<=k-1 first; reverse to read r=0,1,...
+## Reorder to r = 0, 1, ..., k-1 (so trace stat is largest at r=0 and decreases),
+## which is the natural reading order and what the rank loop + UI table expect.
 ts_asc <- rev(teststat); cv_asc <- rev(cv5)
 rank <- 0L
 for (i in seq_along(ts_asc)) { if (ts_asc[i] > cv_asc[i]) rank <- i else break }
@@ -35,8 +35,8 @@ ce_emit(list(
   rank = rank,
   n_series = k,
   eigenvalues = as.numeric(jo@lambda),
-  trace_stat = rev(ts_asc),            # r=0,1,...,k-1
-  crit_5pct  = rev(cv_asc),
+  trace_stat = ts_asc,                 # r=0,1,...,k-1 (largest trace at r=0, decreasing)
+  crit_5pct  = cv_asc,
   interpretation = if (rank == 0)
       "No cointegrating relationship at 5% (expected for stationary return series)."
     else sprintf("%d cointegrating relationship(s) at 5%% trace test.", rank)
