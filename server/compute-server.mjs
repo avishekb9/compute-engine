@@ -23,7 +23,7 @@ import { request as httpsRequest } from "node:https";
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, extname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { cacheKey, cacheGet, cacheSet, cacheGetStale, rateLimit, acquire, release, concurrencyState, dailyLimit, llmBudget, llmBudgetState, sweep, metrics, countMethod, metricsSnapshot, clientIp, logLine } from "./guards.mjs";
+import { cacheKey, cacheGet, cacheSet, cacheGetStale, rateLimit, acquire, release, concurrencyState, dailyLimit, llmBudget, llmBudgetState, sweep, metrics, countMethod, countEvent, metricsSnapshot, clientIp, logLine } from "./guards.mjs";
 
 // per-IP rate limits (requests/min); /health + /catalog + /metrics unlimited
 const RATE = { "/api/compute/run": 20, "/api/chat": 10, "/api/research": 5 };
@@ -33,6 +33,9 @@ const MAX_BODY_BYTES = 64 * 1024;   // reject oversized POST bodies (memory-abus
 const MAX_MSG_CHARS  = 4000;        // cap chat/research input length before paying for Gemini
 const ENGINE_VERSION = "1.0";       // provenance stamp (T1.2)
 const WORKBENCH_URL  = "https://avishekb9.github.io/econstellar/research-engine.html";
+// T3.2 — privacy-respecting analytics: ONLY these aggregate event names are counted
+// (no IP/cookie/PII recorded); anything else is ignored, keeping the map bounded.
+const ALLOWED_EVENTS = new Set(["portal","reproduce","changelog","workbench","embed","research-station","demo_run","reproduce_run"]);
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ENGINE_DIR = join(__dirname, "..");        // compute-engine/
@@ -617,6 +620,20 @@ const server = createServer(async (req, res) => {
 
   if (u.pathname === "/api/compute/catalog")
     return send(200, "application/json", JSON.stringify({ methods: METHODS, datasets: DATASETS }));
+
+  // ── privacy-respecting usage beacon (T3.2): aggregate counts only, no PII ──
+  if (u.pathname === "/api/event" && req.method === "POST") {
+    if (!rateLimit(clientIp(req), "/api/event", 60).ok) return send(429, "application/json", JSON.stringify({ error: "rate_limit" }));
+    let body = "", tooBig = false;
+    req.on("data", d => { if (body.length + d.length > 2048) tooBig = true; else body += d; });
+    req.on("end", () => {
+      if (tooBig) return send(413, "text/plain", "");
+      let name = ""; try { name = String((JSON.parse(body || "{}").name) || "").slice(0, 40); } catch {}
+      if (ALLOWED_EVENTS.has(name)) countEvent(name);   // count only allowlisted names; nothing else is stored
+      return send(204, "text/plain", "");
+    });
+    return;
+  }
 
   // ── guards for metered routes: per-minute → per-day → global concurrency ──
   const ip = clientIp(req);

@@ -114,10 +114,18 @@ export const metrics = {
   daily_limited_total: 0,
   concurrency_shed_total: 0,
   methods: {},          // method -> count
+  events: {},           // aggregate, no-PII page/feature counters (T3.2)
 };
 export function countMethod(m) {
   if (!m) return;
   metrics.methods[m] = (metrics.methods[m] || 0) + 1;
+}
+// Aggregate, privacy-respecting usage counter — stores only a count per allowlisted
+// event name. No IP, no cookie, no user-agent, no per-visitor record. The caller
+// validates the name against a fixed allowlist first, so the map stays bounded.
+export function countEvent(name) {
+  if (!name) return;
+  metrics.events[name] = (metrics.events[name] || 0) + 1;
 }
 export function metricsSnapshot() {
   return {
@@ -135,6 +143,7 @@ export function metricsSnapshot() {
     llm_cap_per_day: llmBudgetState().max,
     cache_entries: cacheStore.size,
     methods: { ...metrics.methods },
+    events: { ...metrics.events },
   };
 }
 
