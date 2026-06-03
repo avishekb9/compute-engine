@@ -24,6 +24,14 @@ charts.
 | GARCH(1,1) Volatility | `tseries` | EViews/OxMetrics "GARCH" |
 | Wavelet Variance (MODWT) | `waveslim` | — |
 | Wavelet-Quantile Spillover (WQTE) | `waveslim` + `quantreg` | contagion-channels / WaveQTE |
+| SOCH Scale Profile (published `sochcontagion`) | `sochcontagion` | — |
+| Wavelet Coherence (MODWT, by scale) | `waveslim` | — |
+| Rolling Connectedness (time-varying Diebold-Yilmaz) | `vars` | — |
+| Quantile VAR (tail dependence) | `quantreg` | — |
+
+> The table above samples the catalog; the live registry now serves **17 methods** in total
+> (see `ARCHITECTURE.md` §A2). The newest four are `soch_profile`, `wavelet_coherence`,
+> `spillover_rolling`, `quantile_var`.
 
 ### AI analyst chatbot
 
@@ -83,7 +91,7 @@ compute-engine/
 
 ## Status & roadmap
 
-- **Now:** 6 methods, bwrap sandbox, AI chatbot — all verified on real G20 data.
+- **Now:** 17 methods, bwrap sandbox, AI chatbot — all verified on real G20 data.
 - **Next:** dataset upload; packaged `contagionchannels` / `WaveQTE` estimators;
   VECM, panel-IV, local projections, DSGE (via `gEcon`); deployment;
   optionally a Vertex AI Agent Builder front-end for the chatbot.
