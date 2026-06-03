@@ -153,6 +153,27 @@ const METHODS = {
     desc: "Engle (2002) DCC-GARCH(1,1) time-varying conditional correlations across 2–4 series (rmgarch); returns the per-pair correlation-path summary.",
     params: { series: { type: "series", n: [2, 4], required: true } },
   },
+  wavelet_coherence: {
+    runner: "r", script: "wavelet_coherence.R",
+    label: "Wavelet Coherence (MODWT, by scale)",
+    category: "Multi-Scale · Co-movement",
+    desc: "Cross-wavelet squared coherence between two return series at each MODWT time-scale (d1≈2-4d … long horizons): how strongly two markets co-move at short vs long horizons. Transparent waveslim realisation.",
+    params: { series: { type: "series", n: 2, required: true }, levels: { type: "int", optional: true } },
+  },
+  spillover_rolling: {
+    runner: "r", script: "spillover_rolling.R",
+    label: "Rolling Connectedness (time-varying Diebold-Yilmaz)",
+    category: "Contagion · Spillover (dynamic)",
+    desc: "Time-varying Diebold-Yilmaz total connectedness over a sliding window (same GFEVD computation as 'connectedness') across 2-6 markets; returns the TCI time series whose peaks mark systemic-stress episodes.",
+    params: { series: { type: "series", n: [2, 6], required: true }, p: { type: "int", optional: true }, H: { type: "int", optional: true }, window: { type: "int", optional: true }, step: { type: "int", optional: true } },
+  },
+  quantile_var: {
+    runner: "r", script: "quantile_var.R",
+    label: "Quantile VAR (tail dependence)",
+    category: "Time Series · Quantile Multivariate",
+    desc: "Quantile vector autoregression at tail quantile tau (quantreg): the lag-1 coefficient matrix A1(tau) across 2-6 markets gives directed tail dependence, plus per-market tail driver/receiver scores. tau=0.5 is the median (LAD) VAR.",
+    params: { series: { type: "series", n: [2, 6], required: true }, tau: { type: "num", optional: true }, p: { type: "int", optional: true } },
+  },
   live_unit_root: {
     runner: "r", script: "live_adf.R", fetch: true,
     label: "Live Stationarity — Levels vs Returns (ADF + KPSS)",
@@ -382,6 +403,7 @@ function chatTools() {
       K: { type: "integer", description: "vecm: VAR lag order" }, ecdet: { type: "string", enum: ["none", "const", "trend"], description: "vecm: deterministic term" },
       lag: { type: "integer", description: "granger/network: Granger lag order" }, alpha: { type: "number", description: "granger/network: edge significance level" },
       H: { type: "integer", description: "connectedness: GFEVD horizon" },
+      window: { type: "integer", description: "spillover_rolling: rolling window length" }, step: { type: "integer", description: "spillover_rolling: window step" },
     }, required: ["method"] },
   }] }];
 }
