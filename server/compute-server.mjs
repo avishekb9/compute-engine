@@ -31,6 +31,8 @@ const RATE = { "/api/compute/run": 20, "/api/chat": 10, "/api/research": 5 };
 const DAILY = { "/api/chat": 50, "/api/research": 20 };
 const MAX_BODY_BYTES = 64 * 1024;   // reject oversized POST bodies (memory-abuse guard)
 const MAX_MSG_CHARS  = 4000;        // cap chat/research input length before paying for Gemini
+const ENGINE_VERSION = "1.0";       // provenance stamp (T1.2)
+const WORKBENCH_URL  = "https://avishekb9.github.io/econstellar/research-engine.html";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ENGINE_DIR = join(__dirname, "..");        // compute-engine/
@@ -231,6 +233,33 @@ function validate(methodId, params) {
   // optional date window passthrough (validated as ISO-ish strings only)
   for (const k of ["start", "end"]) if (typeof params[k] === "string" && /^\d{4}-\d{2}-\d{2}$/.test(params[k])) clean[k] = params[k];
   return { method: m, clean };
+}
+
+// ── provenance / permalink — reproducibility stamping (T1.2) ───────────────────
+// Every result carries {method, version, revision, params, data_vintage, timestamp,
+// permalink}. The permalink encodes method+params in the workbench URL hash so the
+// exact analysis re-runs on load — turning a number into a citable artifact.
+function permalink(method, clean) {
+  const parts = ["method=" + method];
+  for (const [k, v] of Object.entries(clean)) {
+    if (k === "dataset" && v === "g20") continue;          // g20 is the default
+    parts.push(k + "=" + (Array.isArray(v) ? v.join(",") : v));
+  }
+  return WORKBENCH_URL + "#" + parts.join("&");
+}
+function provenance(method, spec, clean) {
+  const ds = clean.dataset || "g20";
+  return {
+    method,
+    engine_version: ENGINE_VERSION,
+    engine_revision: process.env.K_REVISION || "local",
+    params: clean,
+    data_vintage: spec && spec.fetch
+      ? "live fetch: " + (clean.symbol || "?") + " (" + (clean.source || "yahoo") + ")"
+      : (DATASETS[ds] ? DATASETS[ds].label : ds),
+    timestamp: new Date().toISOString(),
+    permalink: permalink(method, clean),
+  };
 }
 
 // ── live market-data fetch (TRUSTED orchestrator only) ─────────────────────────
@@ -649,7 +678,7 @@ const server = createServer(async (req, res) => {
       const rec = { id: ++jobSeq, ts: new Date().toISOString(), method: payload.method, params: v.clean, ms, ok: r.ok, error: r.error || null };
       logJob(rec);
       logLine({ path: "/api/compute/run", method: payload.method, series: v.clean.series, symbol: v.clean.symbol, ip, ms, cached: fromCache, error: r.error || null });
-      return send(r.ok ? 200 : 500, "application/json", JSON.stringify({ ...r, ms, cached: fromCache, job_id: rec.id }));
+      return send(r.ok ? 200 : 500, "application/json", JSON.stringify({ ...r, ms, cached: fromCache, job_id: rec.id, provenance: provenance(payload.method, v.method, v.clean) }));
     });
     return;
   }
