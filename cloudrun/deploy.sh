@@ -18,8 +18,10 @@ HERE="$(cd "$(dirname "$0")" && pwd)"          # compute-engine/cloudrun
 ENGINE="$(cd "$HERE/.." && pwd)"               # compute-engine
 REPO="$(cd "$ENGINE/.." && pwd)"               # ivy-fineco
 DATA="$REPO/papers/contagion-channels/data/G20.xlsx"
+SOCHPKG="$REPO/papers/SOCH/code/sochcontagion_0.1.0.tar.gz"   # published method for soch_profile
 
 [ -f "$DATA" ] || { echo "ERROR: G20 data not found at $DATA"; exit 1; }
+[ -f "$SOCHPKG" ] || { echo "ERROR: sochcontagion tarball not found at $SOCHPKG"; exit 1; }
 
 # GOOGLE_API_KEY enables the /api/chat Gemini analyst. Read from env or
 # versiondevs/.env.local (one level above ivy-fineco); never printed/committed.
@@ -33,6 +35,7 @@ BUILD="$(mktemp -d)"
 trap 'rm -rf "$BUILD"' EXIT
 cp -r "$ENGINE/server" "$ENGINE/r" "$ENGINE/web" "$ENGINE/py" "$BUILD/"
 cp "$HERE/Dockerfile" "$BUILD/Dockerfile"
+cp "$SOCHPKG" "$BUILD/sochcontagion_0.1.0.tar.gz"
 mkdir -p "$BUILD/data-root/papers/contagion-channels/data"
 cp "$DATA" "$BUILD/data-root/papers/contagion-channels/data/G20.xlsx"
 

@@ -20,6 +20,14 @@ RUN . /etc/os-release && \
           install.packages(c('jsonlite','readxl','urca','tseries','vars','waveslim','quantreg','plm','lmtest','frequencyConnectedness','igraph','rugarch','rmgarch'))" && \
     R -e "for (p in c('jsonlite','readxl','urca','tseries','vars','waveslim','quantreg','plm','lmtest','frequencyConnectedness','igraph','rugarch','rmgarch')) if(!requireNamespace(p,quietly=TRUE)) stop(paste('MISSING',p))"
 
+# Published SOCH package (CRAN-candidate v0.1.0) from the bundled tarball — the
+# soch_profile method runs the paper's own code (Bhandari & Parida 2026), not a
+# reimplementation. Deps (waveslim, quantreg) are already installed above.
+COPY sochcontagion_0.1.0.tar.gz /tmp/sochcontagion.tar.gz
+RUN R CMD INSTALL /tmp/sochcontagion.tar.gz && \
+    R -e "if(!requireNamespace('sochcontagion',quietly=TRUE)) stop('MISSING sochcontagion')" && \
+    rm -f /tmp/sochcontagion.tar.gz
+
 # Node 20 (the server is zero-dep ESM; only needs node:http/https/child_process/fs).
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates gnupg && \
     curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \

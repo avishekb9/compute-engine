@@ -104,6 +104,13 @@ const METHODS = {
     desc: "Directional wavelet-quantile dependence X→Y at a tail quantile, per scale. contagion-channels / WaveQTE primitive.",
     params: { series: { type: "series", n: 2, required: true }, tau: { type: "num", optional: true }, levels: { type: "int", optional: true } },
   },
+  soch_profile: {
+    runner: "r", script: "soch_profile.R",
+    label: "SOCH Scale Profile (published sochcontagion)",
+    category: "Contagion · Scale-Ordered (SOCH)",
+    desc: "Directed wavelet-quantile transfer-entropy profile by scale, BOTH directions, for a market pair — via the PUBLISHED sochcontagion package (Bhandari & Parida 2026). Returns the SOCH scale profile: peak scale (SOCH-A), shape-symmetry KL (SOCH-B), level asymmetry (SOCH-C). Reproduces the paper's USA->India result (tau=0.05, J=4: agg 0.039, rising d1->d4).",
+    params: { series: { type: "series", n: 2, required: true }, tau: { type: "num", optional: true }, levels: { type: "int", optional: true } },
+  },
   vecm: {
     runner: "r", script: "vecm.R",
     label: "Cointegration (Johansen VECM)",
