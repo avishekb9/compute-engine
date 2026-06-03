@@ -23,10 +23,14 @@ import { request as httpsRequest } from "node:https";
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, extname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { cacheKey, cacheGet, cacheSet, rateLimit, sweep, metrics, countMethod, metricsSnapshot, clientIp, logLine } from "./guards.mjs";
+import { cacheKey, cacheGet, cacheSet, cacheGetStale, rateLimit, acquire, release, concurrencyState, dailyLimit, llmBudget, llmBudgetState, sweep, metrics, countMethod, metricsSnapshot, clientIp, logLine } from "./guards.mjs";
 
 // per-IP rate limits (requests/min); /health + /catalog + /metrics unlimited
 const RATE = { "/api/compute/run": 20, "/api/chat": 10, "/api/research": 5 };
+// per-IP DAILY caps on the paid LLM endpoints (UTC day) — slow-drain prevention on top of /min
+const DAILY = { "/api/chat": 50, "/api/research": 20 };
+const MAX_BODY_BYTES = 64 * 1024;   // reject oversized POST bodies (memory-abuse guard)
+const MAX_MSG_CHARS  = 4000;        // cap chat/research input length before paying for Gemini
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ENGINE_DIR = join(__dirname, "..");        // compute-engine/
@@ -329,7 +333,7 @@ function runSandboxed(method, paramsJson) {
       try {
         const result = JSON.parse(trimmed);
         if (result.error) return resolve({ ok: false, error: result.error });
-        resolve({ ok: true, result, sandbox: HAVE_BWRAP ? "bwrap+timeout(net-isolated)" : "timeout(net-isolated)" });
+        resolve({ ok: true, result, sandbox: HAVE_BWRAP ? "bwrap+timeout(net-isolated,ro-fs)" : "timeout(no-net-isolation;parameterised-only-registry)" });
       } catch (e) {
         resolve({ ok: false, error: `non-JSON output: ${trimmed.slice(0, 300)}` });
       }
@@ -556,22 +560,42 @@ const server = createServer(async (req, res) => {
   if (u.pathname === "/api/compute/catalog")
     return send(200, "application/json", JSON.stringify({ methods: METHODS, datasets: DATASETS }));
 
-  // ── per-IP rate limiting (before the metered routes) ──
+  // ── guards for metered routes: per-minute → per-day → global concurrency ──
   const ip = clientIp(req);
-  const limit = RATE[u.pathname];
-  if (limit) {
-    const rl = rateLimit(ip, u.pathname, limit);
+  if (RATE[u.pathname]) {
+    // (1) per-IP sliding-window, per-minute
+    const rl = rateLimit(ip, u.pathname, RATE[u.pathname]);
     if (!rl.ok) {
       metrics.rate_limited_total++;
       logLine({ path: u.pathname, ip, event: "rate_limit", retry_after_seconds: rl.retry_after_seconds });
-      return send(429, "application/json", JSON.stringify({ error: "rate_limit", retry_after_seconds: rl.retry_after_seconds }));
+      return send(429, "application/json", JSON.stringify({ error: "rate_limit", message: "Too many requests — slow down.", retry_after_seconds: rl.retry_after_seconds }));
     }
+    // (2) per-IP per-UTC-day quota on the paid LLM endpoints
+    const daily = DAILY[u.pathname];
+    if (daily) {
+      const dl = dailyLimit(ip, u.pathname, daily);
+      if (!dl.ok) {
+        metrics.daily_limited_total++;
+        logLine({ path: u.pathname, ip, event: "daily_quota" });
+        return send(429, "application/json", JSON.stringify({ error: "daily_quota", message: "Daily limit for this endpoint reached; resets at 00:00 UTC.", retry_after_seconds: 3600 }));
+      }
+    }
+    // (3) global concurrency ceiling — shed load rather than fan out unbounded credit spend
+    if (!acquire()) {
+      metrics.concurrency_shed_total++;
+      logLine({ path: u.pathname, ip, event: "concurrency_shed", ...concurrencyState() });
+      return send(503, "application/json", JSON.stringify({ error: "busy", message: "High demand right now — please retry in a moment.", retry_after_seconds: 5 }));
+    }
+    let released = false;
+    const rel = () => { if (!released) { released = true; release(); } };
+    res.on("close", rel); res.on("finish", rel);   // release the slot on any completion
   }
 
   if (u.pathname === "/api/compute/run" && req.method === "POST") {
-    let body = "";
-    req.on("data", d => (body += d));
+    let body = "", tooBig = false;
+    req.on("data", d => { if (body.length + d.length > MAX_BODY_BYTES) { tooBig = true; return; } body += d; });
     req.on("end", async () => {
+      if (tooBig) return send(413, "application/json", JSON.stringify({ error: "payload_too_large", message: "Request body too large." }));
       let payload;
       try { payload = JSON.parse(body || "{}"); } catch { return send(400, "application/json", JSON.stringify({ ok: false, error: "bad JSON body" })); }
       let v;
@@ -588,7 +612,8 @@ const server = createServer(async (req, res) => {
         metrics.cache_misses++;
         try { r = await runSandboxed(v.method, await buildArgsJson(v.method, v.clean)); }
         catch (e) { r = { ok: false, error: `data fetch failed: ${e.message}` }; }
-        cacheSet(ck, r);
+        if (r.ok) cacheSet(ck, r);
+        else { const stale = cacheGetStale(ck); if (stale && stale.ok) r = { ...stale, stale: true, note: "served last-good cached result (live run failed)" }; }
       }
       if (!r.ok) metrics.errors_total++;
       const ms = Date.now() - t0;
@@ -602,13 +627,16 @@ const server = createServer(async (req, res) => {
 
   // chatbot: NL -> Gemini function-call -> run analysis -> Gemini summary
   if (u.pathname === "/api/chat" && req.method === "POST") {
-    let body = "";
-    req.on("data", d => (body += d));
+    let body = "", tooBig = false;
+    req.on("data", d => { if (body.length + d.length > MAX_BODY_BYTES) { tooBig = true; return; } body += d; });
     req.on("end", async () => {
+      if (tooBig) return send(413, "application/json", JSON.stringify({ error: "payload_too_large", message: "Request body too large." }));
       let payload;
       try { payload = JSON.parse(body || "{}"); } catch { return send(400, "application/json", JSON.stringify({ error: "bad JSON body" })); }
+      if (String(payload.message || "").length > MAX_MSG_CHARS) return send(413, "application/json", JSON.stringify({ error: "message_too_long", message: `Message exceeds ${MAX_MSG_CHARS} characters.` }));
       const tc = Date.now();
       metrics.requests_total++; countMethod("chat");
+      if (!llmBudget().ok) { metrics.errors_total++; logLine({ path: "/api/chat", ip, event: "llm_daily_cap" }); return send(503, "application/json", JSON.stringify({ error: "daily_capacity", message: "Daily AI-analyst capacity reached; resets 00:00 UTC.", retry_after_seconds: 3600 })); }
       try {
         const out = await chatTurn(payload.message || "");
         if (out && out.ran && out.ran.error) metrics.errors_total++;
@@ -622,15 +650,18 @@ const server = createServer(async (req, res) => {
 
   // deep-research assistant: Gemini 2.5 Pro + run_analysis + grounded citations
   if (u.pathname === "/api/research" && req.method === "POST") {
-    let body = "";
-    req.on("data", d => (body += d));
+    let body = "", tooBig = false;
+    req.on("data", d => { if (body.length + d.length > MAX_BODY_BYTES) { tooBig = true; return; } body += d; });
     req.on("end", async () => {
+      if (tooBig) return send(413, "application/json", JSON.stringify({ error: "payload_too_large", message: "Request body too large." }));
       let payload;
       try { payload = JSON.parse(body || "{}"); } catch { return send(400, "application/json", JSON.stringify({ error: "bad JSON body" })); }
       if (!GOOGLE_KEY) return send(503, "application/json", JSON.stringify({ error: "research assistant unavailable (no GOOGLE_API_KEY on this revision)" }));
       if (!payload.query || !String(payload.query).trim()) return send(400, "application/json", JSON.stringify({ error: "missing 'query'" }));
+      if (String(payload.query).length > MAX_MSG_CHARS) return send(413, "application/json", JSON.stringify({ error: "query_too_long", message: `Query exceeds ${MAX_MSG_CHARS} characters.` }));
       const tr = Date.now();
       metrics.requests_total++; countMethod("research");
+      if (!llmBudget().ok) { metrics.errors_total++; logLine({ path: "/api/research", ip, event: "llm_daily_cap" }); return send(503, "application/json", JSON.stringify({ error: "daily_capacity", message: "Daily research capacity reached; resets 00:00 UTC.", retry_after_seconds: 3600 })); }
       try {
         const out = await researchTurn(String(payload.query), payload.context);
         if (out.error) metrics.errors_total++;
@@ -651,6 +682,11 @@ const server = createServer(async (req, res) => {
 
 // periodic cleanup of expired cache + rate-limit buckets (unref'd: won't hold process open)
 setInterval(sweep, 60 * 1000).unref();
+
+// slowloris guard: a slow request body cannot hold a connection (and a concurrency
+// slot) indefinitely — cap total request + header time.
+server.requestTimeout = 30000;
+server.headersTimeout = 15000;
 
 server.listen(PORT, HOST, () => {
   console.log(`✓ Compute Engine on http://${HOST}:${PORT}`);

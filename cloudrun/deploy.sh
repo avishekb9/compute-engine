@@ -44,8 +44,8 @@ gcloud run deploy "$SERVICE" \
   --account "$ACCOUNT" \
   --allow-unauthenticated \
   --memory 2Gi --cpu 2 --timeout 300 \
-  --min-instances 0 --max-instances 2 \
-  --set-env-vars "HOST=0.0.0.0,COMPUTE_TIMEOUT_S=90${KEY:+,GOOGLE_API_KEY=$KEY}" \
+  --min-instances 0 --max-instances 2 --concurrency 16 \
+  --set-env-vars "HOST=0.0.0.0,COMPUTE_TIMEOUT_S=90,MAX_CONCURRENT=8,MAX_LLM_PER_DAY=400${KEY:+,GOOGLE_API_KEY=$KEY}" \
   --quiet
 
 echo "URL:"
