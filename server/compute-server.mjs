@@ -74,6 +74,10 @@ const METHODS = {
     category: "Time Series · Stationarity",
     desc: "Augmented Dickey-Fuller + KPSS on one return series. EViews 'Unit Root Test'.",
     params: { series: { type: "series", n: 1, required: true }, lags: { type: "int", optional: true } },
+    version: "1.0.0", capability: "stationarity", primitives: [], long_running: false, min_obs: 50,
+    returns: ["method", "dataset", "series", "n", "adf", "kpss", "interpretation"],
+    paper: null, deprecated: false,
+    changelog: [{ version: "1.0.0", note: "Initial registry entry" }],
   },
   var_irf: {
     runner: "r", script: "var_irf.R",
@@ -81,6 +85,10 @@ const METHODS = {
     category: "Time Series · Multivariate",
     desc: "Vector autoregression with AIC lag selection + orthogonal IRFs. EViews/RATS 'VAR'.",
     params: { series: { type: "series", n: [2, 6], required: true }, p: { type: "int", optional: true }, irf_h: { type: "int", optional: true } },
+    version: "1.0.0", capability: "dynamics", primitives: [], long_running: false, min_obs: 100,
+    returns: ["method", "dataset", "series", "n", "lag_order", "irf_horizon", "adj_r2", "stable", "max_root", "irf_shock", "irf"],
+    paper: null, deprecated: false,
+    changelog: [{ version: "1.0.0", note: "Initial registry entry" }],
   },
   dfa_hurst: {
     runner: "r", script: "dfa_hurst.R",
@@ -88,6 +96,10 @@ const METHODS = {
     category: "Long Memory · Fractal",
     desc: "Detrended Fluctuation Analysis → Hurst exponent. Core NAMH primitive.",
     params: { series: { type: "series", n: 1, required: true }, min_box: { type: "int", optional: true }, max_box: { type: "int", optional: true } },
+    version: "1.0.0", capability: "long-memory", primitives: ["P1"], long_running: false, min_obs: 100,
+    returns: ["method", "dataset", "series", "n", "hurst", "interpretation", "n_boxes", "box_min", "box_max"],
+    paper: null, deprecated: false,
+    changelog: [{ version: "1.0.0", note: "Initial registry entry" }],
   },
   garch: {
     runner: "r", script: "garch.R",
@@ -95,6 +107,10 @@ const METHODS = {
     category: "Volatility · Conditional Heteroskedasticity",
     desc: "GARCH(p,q) conditional-variance model + persistence. EViews/OxMetrics 'GARCH'.",
     params: { series: { type: "series", n: 1, required: true }, p: { type: "int", optional: true }, q: { type: "int", optional: true } },
+    version: "1.0.0", capability: "volatility", primitives: [], long_running: false, min_obs: 100,
+    returns: ["method", "dataset", "series", "n", "order", "coefficients", "persistence", "high_persistence", "log_likelihood", "current_cond_vol", "mean_cond_vol", "interpretation"],
+    paper: null, deprecated: false,
+    changelog: [{ version: "1.0.0", note: "Initial registry entry" }],
   },
   wavelet: {
     runner: "r", script: "wavelet.R",
@@ -102,6 +118,10 @@ const METHODS = {
     category: "Multi-Scale · Wavelets",
     desc: "MODWT variance decomposition across time scales (d1≈2-4d …). Stage-1 substrate for NAMH/MCPFM/contagion.",
     params: { series: { type: "series", n: 1, required: true }, levels: { type: "int", optional: true } },
+    version: "1.0.0", capability: "multi-scale", primitives: ["P2"], long_running: false, min_obs: 256,
+    returns: ["method", "dataset", "series", "n", "wavelet", "levels", "scales", "interpretation"],
+    paper: null, deprecated: false,
+    changelog: [{ version: "1.0.0", note: "Initial registry entry" }],
   },
   wqte: {
     runner: "r", script: "wqte.R",
@@ -109,6 +129,10 @@ const METHODS = {
     category: "Contagion · Tail Dependence",
     desc: "Directional wavelet-quantile dependence X→Y at a tail quantile, per scale. contagion-channels / WaveQTE primitive.",
     params: { series: { type: "series", n: 2, required: true }, tau: { type: "num", optional: true }, levels: { type: "int", optional: true } },
+    version: "1.0.0", capability: "contagion", primitives: ["P2", "P3"], long_running: false, min_obs: 256,
+    returns: ["method", "dataset", "from", "to", "tau", "wavelet", "levels", "n", "per_scale", "aggregate_qte", "interpretation", "note"],
+    paper: "arXiv:2606.04113", deprecated: false,
+    changelog: [{ version: "1.0.0", note: "Initial registry entry" }],
   },
   soch_profile: {
     runner: "r", script: "soch_profile.R",
@@ -116,6 +140,10 @@ const METHODS = {
     category: "Contagion · Scale-Ordered (SOCH)",
     desc: "Directed wavelet-quantile transfer-entropy profile by scale, BOTH directions, for a market pair — via the PUBLISHED sochcontagion package (Bhandari & Parida 2026). Returns the SOCH scale profile: peak scale (SOCH-A), shape-symmetry KL (SOCH-B), level asymmetry (SOCH-C). Reproduces the paper's USA->India result (tau=0.05, J=4: agg 0.039, rising d1->d4).",
     params: { series: { type: "series", n: 2, required: true }, tau: { type: "num", optional: true }, levels: { type: "int", optional: true } },
+    version: "1.0.0", capability: "contagion", primitives: ["P2", "P3"], long_running: false, min_obs: 256,
+    returns: ["method", "dataset", "from", "to", "tau", "wavelet", "levels", "n", "profile_forward", "profile_reverse", "peak_scale_forward", "peak_scale_reverse", "aggregate_forward", "aggregate_reverse", "shape_symmetry_kl", "interpretation", "source"],
+    paper: "arXiv:2606.04113", deprecated: false,
+    changelog: [{ version: "1.0.0", note: "Initial registry entry" }],
   },
   vecm: {
     runner: "r", script: "vecm.R",
@@ -123,6 +151,10 @@ const METHODS = {
     category: "Time Series · Cointegration",
     desc: "Johansen trace-test cointegration rank among 2–6 series (urca::ca.jo). EViews 'Johansen Cointegration Test'.",
     params: { series: { type: "series", n: [2, 6], required: true }, K: { type: "int", optional: true }, ecdet: { type: "enum", values: ["none", "const", "trend"], optional: true } },
+    version: "1.0.0", capability: "cointegration", primitives: [], long_running: false, min_obs: 100,
+    returns: ["method", "dataset", "series", "n", "K", "ecdet", "test", "rank", "n_series", "eigenvalues", "trace_stat", "crit_5pct", "interpretation"],
+    paper: null, deprecated: false,
+    changelog: [{ version: "1.0.0", note: "Initial registry entry" }],
   },
   granger: {
     runner: "r", script: "granger.R",
@@ -130,6 +162,10 @@ const METHODS = {
     category: "Time Series · Causality",
     desc: "Pairwise Granger-causality tests over 2–8 series → directed edges + in/out degree. RATS/EViews 'Granger Causality'.",
     params: { series: { type: "series", n: [2, 8], required: true }, lag: { type: "int", optional: true }, alpha: { type: "num", optional: true } },
+    version: "1.0.0", capability: "network", primitives: ["P6"], long_running: false, min_obs: 100,
+    returns: ["method", "dataset", "series", "n", "lag", "alpha", "n_edges", "edges", "out_degree", "in_degree", "p_matrix", "interpretation"],
+    paper: null, deprecated: false,
+    changelog: [{ version: "1.0.0", note: "Initial registry entry" }],
   },
   panel_unit_root: {
     runner: "r", script: "panel_unit_root.R",
@@ -137,6 +173,10 @@ const METHODS = {
     category: "Panel · Stationarity",
     desc: "Im-Pesaran-Shin and Levin-Lin-Chu panel unit-root tests over 2–18 series (plm::purtest).",
     params: { series: { type: "series", n: [2, 18], required: true }, lags: { type: "enum", values: ["aic", "sic", "hall"], optional: true } },
+    version: "1.0.0", capability: "stationarity", primitives: [], long_running: false, min_obs: 100,
+    returns: ["method", "dataset", "series", "n_obs", "n_panels", "lags", "ips", "llc", "interpretation"],
+    paper: null, deprecated: false,
+    changelog: [{ version: "1.0.0", note: "Initial registry entry" }],
   },
   connectedness: {
     runner: "r", script: "connectedness.R",
@@ -144,6 +184,10 @@ const METHODS = {
     category: "Contagion · Spillover",
     desc: "Total/directional connectedness from a generalized FEVD (Diebold-Yilmaz 2012) plus a short/medium/long frequency decomposition (Barunik-Krehlik 2018). Core spillover primitive.",
     params: { series: { type: "series", n: [2, 8], required: true }, p: { type: "int", optional: true }, H: { type: "int", optional: true } },
+    version: "1.0.0", capability: "contagion", primitives: ["P7"], long_running: false, min_obs: 100,
+    returns: ["method", "dataset", "series", "n", "var_lag", "horizon", "total_connectedness", "directional", "frequency_bands", "interpretation"],
+    paper: null, deprecated: false,
+    changelog: [{ version: "1.0.0", note: "Initial registry entry" }],
   },
   network: {
     runner: "r", script: "network.R",
@@ -151,6 +195,10 @@ const METHODS = {
     category: "Network · Topology",
     desc: "Builds a directed Granger network over 3–12 series and returns centralities (degree/betweenness/eigenvector), Walktrap communities, and force-directed layout coordinates for client-side SVG.",
     params: { series: { type: "series", n: [3, 12], required: true }, lag: { type: "int", optional: true }, alpha: { type: "num", optional: true } },
+    version: "1.0.0", capability: "network", primitives: ["P5", "P6"], long_running: false, min_obs: 100,
+    returns: ["method", "dataset", "series", "n", "lag", "alpha", "n_edges", "density", "reciprocity", "n_communities", "nodes", "edges", "interpretation"],
+    paper: null, deprecated: false,
+    changelog: [{ version: "1.0.0", note: "Initial registry entry" }],
   },
   rolling_dcc: {
     runner: "r", script: "rolling_dcc.R",
@@ -158,6 +206,10 @@ const METHODS = {
     category: "Volatility · Time-Varying Correlation",
     desc: "Engle (2002) DCC-GARCH(1,1) time-varying conditional correlations across 2–4 series (rmgarch); returns the per-pair correlation-path summary.",
     params: { series: { type: "series", n: [2, 4], required: true } },
+    version: "1.0.0", capability: "volatility", primitives: [], long_running: false, min_obs: 100,
+    returns: ["method", "dataset", "series", "n", "model", "pairs", "interpretation"],
+    paper: null, deprecated: false,
+    changelog: [{ version: "1.0.0", note: "Initial registry entry" }],
   },
   wavelet_coherence: {
     runner: "r", script: "wavelet_coherence.R",
@@ -165,6 +217,10 @@ const METHODS = {
     category: "Multi-Scale · Co-movement",
     desc: "Cross-wavelet squared coherence between two return series at each MODWT time-scale (d1≈2-4d … long horizons): how strongly two markets co-move at short vs long horizons. Transparent waveslim realisation.",
     params: { series: { type: "series", n: 2, required: true }, levels: { type: "int", optional: true } },
+    version: "1.0.0", capability: "multi-scale", primitives: ["P2"], long_running: false, min_obs: 256,
+    returns: ["method", "dataset", "series", "wavelet", "levels", "n", "per_scale", "horizons", "aggregate_coherence", "peak_scale", "interpretation", "note"],
+    paper: null, deprecated: false,
+    changelog: [{ version: "1.0.0", note: "Initial registry entry" }],
   },
   spillover_rolling: {
     runner: "r", script: "spillover_rolling.R",
@@ -172,6 +228,10 @@ const METHODS = {
     category: "Contagion · Spillover (dynamic)",
     desc: "Time-varying Diebold-Yilmaz total connectedness over a sliding window (same GFEVD computation as 'connectedness') across 2-6 markets; returns the TCI time series whose peaks mark systemic-stress episodes.",
     params: { series: { type: "series", n: [2, 6], required: true }, p: { type: "int", optional: true }, H: { type: "int", optional: true }, window: { type: "int", optional: true }, step: { type: "int", optional: true } },
+    version: "1.0.0", capability: "contagion", primitives: ["P7"], long_running: false, min_obs: 300,
+    returns: ["method", "dataset", "series", "n", "var_lag", "horizon", "window", "step", "windows", "tci_series", "tci_mean", "tci_min", "tci_max", "tci_last", "interpretation"],
+    paper: null, deprecated: false,
+    changelog: [{ version: "1.0.0", note: "Initial registry entry" }],
   },
   quantile_var: {
     runner: "r", script: "quantile_var.R",
@@ -179,6 +239,10 @@ const METHODS = {
     category: "Time Series · Quantile Multivariate",
     desc: "Quantile vector autoregression at tail quantile tau (quantreg): the lag-1 coefficient matrix A1(tau) across 2-6 markets gives directed tail dependence, plus per-market tail driver/receiver scores. tau=0.5 is the median (LAD) VAR.",
     params: { series: { type: "series", n: [2, 6], required: true }, tau: { type: "num", optional: true }, p: { type: "int", optional: true } },
+    version: "1.0.0", capability: "tail-dynamics", primitives: [], long_running: false, min_obs: 100,
+    returns: ["method", "dataset", "series", "n", "tau", "lag", "var_lag", "coef_matrix_lag1", "directional", "interpretation"],
+    paper: null, deprecated: false,
+    changelog: [{ version: "1.0.0", note: "Initial registry entry" }],
   },
   live_unit_root: {
     runner: "r", script: "live_adf.R", fetch: true,
@@ -190,6 +254,21 @@ const METHODS = {
       source:    { type: "enum", values: ["yahoo", "fred"], optional: true },
       transform: { type: "enum", values: ["levels", "returns", "both"], optional: true },
     },
+    version: "1.0.0", capability: "stationarity", primitives: [], long_running: false, min_obs: 50,
+    returns: ["method", "symbol", "source", "n_obs", "price_first", "price_last", "levels", "returns", "note"],
+    paper: null, deprecated: false,
+    changelog: [{ version: "1.0.0", note: "Initial registry entry" }],
+  },
+  ksg_te: {
+    runner: "r", script: "ksg_te.R",
+    label: "KSG Transfer Entropy (async; full-panel directed flow)",
+    category: "Contagion · Information Flow (async)",
+    desc: "Exact Kraskov-Stoegbauer-Grassberger nearest-neighbour conditional-MI transfer entropy (Frenzel-Pompe CMI, max-norm) for directed information flow across markets, with IAAFT source surrogates for significance. Heavy (k-d-tree CMI × surrogates) — runs ONLY as a background job via /api/jobs/submit; discoverable here but rejected by the sync /api/compute/run endpoint.",
+    params: { series: { type: "series", n: [2, 18], optional: true }, k: { type: "int", optional: true }, lag: { type: "int", optional: true }, n_surrogates: { type: "int", optional: true } },
+    version: "1.0.0", capability: "contagion", primitives: ["P3", "P4"], long_running: true, min_obs: 500,
+    returns: ["edges", "top", "n_significant", "provenance"],
+    paper: null, deprecated: false,
+    changelog: [{ version: "1.0.0", note: "Exact KSG conditional-MI transfer entropy + IAAFT surrogates; async-only" }],
   },
 };
 
@@ -255,6 +334,7 @@ function provenance(method, spec, clean) {
   const ds = clean.dataset || "g20";
   return {
     method,
+    method_version: (spec && spec.version) || null,
     engine_version: ENGINE_VERSION,
     engine_revision: process.env.K_REVISION || "local",
     params: clean,
@@ -657,8 +737,15 @@ const server = createServer(async (req, res) => {
   if (u.pathname === "/metrics")
     return send(200, "application/json", JSON.stringify(metricsSnapshot()));
 
-  if (u.pathname === "/api/compute/catalog")
-    return send(200, "application/json", JSON.stringify({ methods: METHODS, datasets: DATASETS }));
+  if (u.pathname === "/api/compute/catalog") {
+    // capability → [method ids], derived from each method's `capability` tag (drives the workbench filter)
+    const capabilities = {};
+    for (const [id, m] of Object.entries(METHODS)) {
+      if (!m.capability) continue;
+      (capabilities[m.capability] ||= []).push(id);
+    }
+    return send(200, "application/json", JSON.stringify({ methods: METHODS, datasets: DATASETS, capabilities }));
+  }
 
   // ── privacy-respecting usage beacon (T3.2): aggregate counts only, no PII ──
   if (u.pathname === "/api/event" && req.method === "POST") {
@@ -715,6 +802,9 @@ const server = createServer(async (req, res) => {
       let v;
       try { v = validate(payload.method, payload.params || {}); }
       catch (e) { return send(400, "application/json", JSON.stringify({ ok: false, error: e.message })); }
+      // long-running methods (e.g. ksg_te) are discoverable in the catalog but run only as
+      // background jobs — never spawn them on the sync endpoint.
+      if (v.method.long_running) return send(400, "application/json", JSON.stringify({ error: "This method runs as a background job. Submit via /api/jobs/submit.", async: true }));
       const t0 = Date.now();
       metrics.requests_total++; countMethod(payload.method);
       // ── response cache (5-min TTL; never caches errors) ──
