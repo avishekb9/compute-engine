@@ -20,6 +20,15 @@ ce_fail <- function(msg) {
 ce_emit <- function(obj) {
   cat(toJSON(obj, auto_unbox = TRUE, digits = 8, na = "null")); quit(status = 0)
 }
+## Async progress (Tier A): emits a newline-terminated progress line ONLY when the
+## async worker sets CE_PROGRESS=1. Silent (no-op) under the synchronous kernel, so the
+## pure-single-JSON stdout contract of /api/compute/run is unchanged. Does not quit.
+ce_progress <- function(fraction = NA, stage = "", elapsed_s = NA) {
+  if (!nzchar(Sys.getenv("CE_PROGRESS"))) return(invisible(NULL))
+  cat(toJSON(list(`__progress__` = TRUE, fraction = fraction, stage = stage,
+                  elapsed_s = elapsed_s), auto_unbox = TRUE, na = "null"), "\n", sep = "")
+  flush(stdout())
+}
 ce_params <- function() {
   a <- commandArgs(trailingOnly = TRUE)
   if (length(a) < 1) ce_fail("no params JSON argument")

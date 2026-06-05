@@ -21,12 +21,15 @@ step<- if (!is.null(p$step)) max(5L, as.integer(p$step)) else 20L
 if (n < win + step) ce_fail(sprintf("need >= %d complete rows for window=%d", win + step, win))
 
 starts <- seq(1L, n - win + 1L, by = step)
-## cap the number of windows so a public request stays within the wall-clock budget
-MAXW <- 45L
+## cap windows; default keeps a public sync request within budget. Async jobs may raise
+## it via max_windows (the async worker also enables per-window progress via CE_PROGRESS).
+MAXW <- if (!is.null(p$max_windows)) max(5L, as.integer(p$max_windows)) else 45L
 if (length(starts) > MAXW) starts <- round(seq(1L, n - win + 1L, length.out = MAXW))
+t0 <- Sys.time()
 
-series_out <- list()
-for (s in starts) {
+series_out <- list(); NS <- length(starts)
+for (i in seq_len(NS)) {
+  s <- starts[i]
   w <- Y[s:(s + win - 1L), , drop = FALSE]
   tci <- tryCatch({
     fit <- vars::VAR(w, p = lag, type = "const")
@@ -35,6 +38,9 @@ for (s in starts) {
   }, error = function(e) NA_real_)
   series_out[[length(series_out) + 1L]] <- list(
     date = as.character(dates[s + win - 1L]), tci = if (is.na(tci)) NA_real_ else round(tci, 2))
+  if (i %% 5L == 0L || i == NS)
+    ce_progress(i / NS, sprintf("window_%d_of_%d", i, NS),
+                as.numeric(difftime(Sys.time(), t0, units = "secs")))
 }
 vals <- vapply(series_out, function(z) z$tci, numeric(1))
 ok <- vals[is.finite(vals)]

@@ -1,0 +1,125 @@
+openapi: 3.0.3
+info:
+  title: Econstellar Kernel — Async Jobs API (Tier A)
+  version: 0.1.0
+  description: >
+    Asynchronous process manager for long-running econometric analyses that exceed
+    the synchronous Cloud Run request budget (full KSG bootstrap, Monte Carlo,
+    18-market rolling windows). Submission is workspace-gated (lab use); completed
+    results are public-readable by permalink. The worker executes the SAME
+    parameterised-only registered R methods as /api/compute/run — no new execution
+    surface. Heavy worker runs on the lab tower; this API (Cloud Run) enqueues to and
+    reads from a GCS-backed job store.
+servers:
+  - url: https://shssm-compute-b7ui3oxaqq-el.a.run.app
+    description: Cloud Run kernel (public front)
+paths:
+  /api/jobs/submit:
+    post:
+      summary: Submit a long-running analysis; returns immediately with a job id.
+      description: Rate-limited and workspace-gated. The method must exist in the catalog and be marked long_running, or accept a force flag.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [method, params, workspace]
+              properties:
+                method:    { type: string, example: ksg_te_panel }
+                params:    { type: object, additionalProperties: true }
+                workspace: { type: string, description: Lab workspace slug (access credential; Tier F), example: avishekb }
+                priority:  { type: string, enum: [normal, low], default: normal }
+      responses:
+        '202':
+          description: Accepted and queued.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id:     { type: string, example: job_2026-06-04_a1b2c3 }
+                  status:     { type: string, enum: [queued] }
+                  poll_url:   { type: string, example: /api/jobs/job_2026-06-04_a1b2c3 }
+                  stream_url: { type: string, example: /api/jobs/job_2026-06-04_a1b2c3/stream }
+                  permalink:  { type: string, example: https://avishekb9.github.io/econstellar/research-engine.html#job=job_2026-06-04_a1b2c3 }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { description: Missing/invalid workspace }
+        '404': { description: Unknown method }
+        '429': { description: Rate limit exceeded }
+  /api/jobs/{job_id}:
+    get:
+      summary: Poll job status and (when finished) the result. Public-readable.
+      parameters:
+        - { name: job_id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Job record.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Job' }
+        '404': { description: Unknown or expired job (results retained 30 days) }
+  /api/jobs/{job_id}/stream:
+    get:
+      summary: Server-Sent Events stream of progress, terminating on done/error.
+      parameters:
+        - { name: job_id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: text/event-stream. Events:: progress | done | error.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                example: |
+                  event: progress
+                  data: {"fraction":0.34,"stage":"window_18_of_52","elapsed_s":142}
+
+                  event: done
+                  data: {"status":"succeeded","poll_url":"/api/jobs/job_..."}
+components:
+  responses:
+    Error:
+      description: Coded error (no stack traces).
+      content:
+        application/json:
+          schema:
+            type: object
+            properties: { error: { type: string }, code: { type: string } }
+  schemas:
+    Progress:
+      type: object
+      properties:
+        fraction:  { type: number, minimum: 0, maximum: 1 }
+        stage:     { type: string }
+        elapsed_s: { type: number }
+    Provenance:
+      type: object
+      description: Full reproducibility stamp (extends the /api/compute/run stamp with panel + method version).
+      properties:
+        method:          { type: string }
+        method_version:  { type: string, example: 1.2.0 }
+        engine_revision: { type: string, example: shssm-compute-00017-4jk }
+        params:          { type: object, additionalProperties: true }
+        panel_id:        { type: string, example: g20_daily }
+        panel_version:   { type: string, example: 2026-06 }
+        panel_hash:      { type: string }
+        worker:          { type: string, example: tower-7920 }
+        timestamp:       { type: string, format: date-time }
+        permalink:       { type: string }
+    Job:
+      type: object
+      properties:
+        job_id:      { type: string }
+        method:      { type: string }
+        params:      { type: object, additionalProperties: true }
+        workspace:   { type: string }
+        status:      { type: string, enum: [queued, running, succeeded, failed, expired] }
+        progress:    { $ref: '#/components/schemas/Progress' }
+        result:      { type: object, additionalProperties: true, nullable: true }
+        error:       { type: string, nullable: true }
+        provenance:  { $ref: '#/components/schemas/Provenance' }
+        submitted_at:{ type: string, format: date-time }
+        started_at:  { type: string, format: date-time, nullable: true }
+        finished_at: { type: string, format: date-time, nullable: true }
+        permalink:   { type: string }

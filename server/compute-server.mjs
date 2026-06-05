@@ -20,6 +20,7 @@
 import { createServer } from "node:http";
 import { spawn } from "node:child_process";
 import { request as httpsRequest } from "node:https";
+import { request as httpRequest } from "node:http";   // GCE/Cloud Run metadata server speaks plain HTTP
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, extname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -593,6 +594,44 @@ function logJob(rec) {
   try { mkdirSync(LOG_DIR, { recursive: true }); writeFileSync(join(LOG_DIR, `job_${rec.id}.json`), JSON.stringify(rec, null, 2)); } catch {}
 }
 
+// ── public job permalink read-front (GET /api/jobs/:id) ───────────────────────
+// Serves a Tier-A async job record that the always-on tower mirrored to
+// gs://<JOBS_BUCKET>/<id>.json. Auth = OAuth via the Cloud Run metadata server
+// (plain HTTP, NOT https — matches NEURICX bq.mjs). Read-only: no submit/exec here.
+const JOBS_BUCKET = process.env.JOBS_BUCKET || "econstellar-jobs";
+let _mtok = null, _mtokExp = 0;
+function metadataToken() {
+  if (process.env.GOOGLE_OAUTH_TOKEN) return Promise.resolve(process.env.GOOGLE_OAUTH_TOKEN);
+  if (_mtok && Date.now() < _mtokExp) return Promise.resolve(_mtok);
+  return new Promise((resolve) => {
+    const req = httpRequest(
+      { host: "metadata.google.internal", path: "/computeMetadata/v1/instance/service-accounts/default/token",
+        headers: { "Metadata-Flavor": "Google" }, timeout: 4000 },
+      (r) => { let b = ""; r.on("data", d => b += d); r.on("end", () => {
+        try { const j = JSON.parse(b); if (!j.access_token) return resolve(null);
+          _mtok = j.access_token; _mtokExp = Date.now() + Math.max(0, (j.expires_in - 120)) * 1000; resolve(_mtok);
+        } catch { resolve(null); } }); });
+    req.on("error", () => resolve(null));
+    req.on("timeout", () => { req.destroy(); resolve(null); });
+    req.end();
+  });
+}
+// returns { status, body } where status mirrors the GCS object fetch (200 / 404 / other)
+function fetchJobRecord(id) {
+  return new Promise((resolve) => {
+    metadataToken().then((tok) => {
+      if (!tok) return resolve({ status: 0, body: null });
+      const u = new URL(`https://storage.googleapis.com/storage/v1/b/${encodeURIComponent(JOBS_BUCKET)}/o/${encodeURIComponent(id + ".json")}?alt=media`);
+      const req = httpsRequest(u, { method: "GET", headers: { "Authorization": `Bearer ${tok}` }, timeout: 15000 }, (r) => {
+        let b = ""; r.on("data", d => b += d); r.on("end", () => resolve({ status: r.statusCode, body: b }));
+      });
+      req.on("error", () => resolve({ status: 0, body: null }));
+      req.on("timeout", () => { req.destroy(); resolve({ status: 0, body: null }); });
+      req.end();
+    });
+  });
+}
+
 // ── HTTP ─────────────────────────────────────────────────────────────────────
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json" };
 
@@ -746,6 +785,15 @@ const server = createServer(async (req, res) => {
       catch (e) { metrics.errors_total++; logLine({ path: "/api/research", ip, ms: Date.now() - tr, error: e.message }); return send(500, "application/json", JSON.stringify({ error: e.message })); }
     });
     return;
+  }
+
+  // ── public job permalink: GET /api/jobs/:id → mirrored GCS record (read-only) ──
+  const jm = u.pathname.match(/^\/api\/jobs\/([A-Za-z0-9_-]{1,128})$/);
+  if (jm && req.method === "GET") {
+    const { status, body } = await fetchJobRecord(jm[1]);
+    if (status === 200 && body) return send(200, "application/json", body);
+    if (status === 404) return send(404, "application/json", JSON.stringify({ error: "unknown or expired job" }));
+    return send(status === 0 ? 502 : status, "application/json", JSON.stringify({ error: "job lookup failed" }));
   }
 
   // static dashboard
