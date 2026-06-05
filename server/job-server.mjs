@@ -32,6 +32,18 @@ const WORKSPACES = new Set((process.env.JOB_WORKSPACES || "avishekb,lab")
 const METHODS = new Set(fs.readdirSync(R_DIR)
   .filter(f => f.endsWith(".R") && !f.startsWith("_")).map(f => f.replace(/\.R$/, "")));
 
+// ── panel provenance (Tier C.4) ───────────────────────────────────────────────
+// Mirror the kernel's g20 panel stamp so async-job results are reproducible incl.
+// data state. This worker has no method/dataset registry (it discovers methods from
+// r/*.R), so the g20 version tag + byte-hash are computed inline at startup. Keep
+// PANEL_VERSION in sync with compute-server.mjs DATASETS.g20.version.
+const PANEL_VERSION = "2026-06";
+const G20_PATH = path.join(REPO, "papers/contagion-channels/data/G20.xlsx");
+const G20_HASH = (() => {
+  try { return crypto.createHash("sha256").update(fs.readFileSync(G20_PATH)).digest("hex"); }
+  catch (e) { console.log(`[job-server] could not hash G20.xlsx at ${G20_PATH}: ${e.message}`); return null; }
+})();
+
 fs.mkdirSync(JOBS_DIR, { recursive: true });
 
 const jobs = new Map();            // id -> job record
@@ -144,9 +156,14 @@ function finish(job, ok, result, error) {
   job.finished_at = now();
   job.result = ok ? result : null;
   job.error = ok ? null : error;
+  const panelId = (job.params && job.params.dataset) || "g20";
   job.provenance = {
     method: job.method, params: job.params, worker: os.hostname(),
-    panel_id: (job.params && job.params.dataset) || "g20",
+    // C.4 — panel provenance so the result is reproducible incl. data state. Only the
+    // bundled g20 panel's version/hash are known to this worker; other ids stamp null.
+    panel_id: panelId,
+    panel_version: panelId === "g20" ? PANEL_VERSION : null,
+    panel_hash: panelId === "g20" ? G20_HASH : null,
     timestamp: job.finished_at, permalink: job.permalink,
   };
   persist(job);

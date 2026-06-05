@@ -22,6 +22,7 @@ import { spawn } from "node:child_process";
 import { request as httpsRequest } from "node:https";
 import { request as httpRequest } from "node:http";   // GCE/Cloud Run metadata server speaks plain HTTP
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { dirname, join, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { cacheKey, cacheGet, cacheSet, cacheGetStale, rateLimit, acquire, release, concurrencyState, dailyLimit, llmBudget, llmBudgetState, sweep, metrics, countMethod, countEvent, metricsSnapshot, clientIp, logLine } from "./guards.mjs";
@@ -272,9 +273,54 @@ const METHODS = {
   },
 };
 
+// ── panel registry (Tier C.1) ─────────────────────────────────────────────────
+// Each stored panel carries provenance metadata so a result is reproducible incl.
+// data state: {id, description, markets, frequency, start, end, source, version,
+// sha256_hash, access}. The g20 hash is computed once at startup from the actual
+// file bytes (node:crypto) and cached — see G20_HASH below. `series` (the 18 names)
+// + `n` + `label` are retained for backward compatibility with validate()/provenance().
+const G20_SERIES = ["Argentina","Australia","Brazil","Canada","China","France","Germany","India","Indonesia","Italy","Japan","Mexico","Russia","SouthAfrica","SouthKorea","Turkey","UK","USA"];
+// Same path _io.R + the runner sandbox use: COMPUTE_REPO || ivy-fineco root.
+const G20_PATH = join(REPO, "papers/contagion-channels/data/G20.xlsx");
+// sha256 of the panel bytes, computed once at boot and cached. Degrades to null
+// (honest "unknown") rather than crashing if the file is missing on a bad deploy.
+const G20_HASH = (() => {
+  try { return createHash("sha256").update(readFileSync(G20_PATH)).digest("hex"); }
+  catch (e) { console.error(`[panel] could not hash G20.xlsx at ${G20_PATH}: ${e.message}`); return null; }
+})();
+
 const DATASETS = {
-  g20: { label: "G20 equity daily log-returns (18 markets, 2006–2026)", n: 5036,
-         series: ["Argentina","Australia","Brazil","Canada","China","France","Germany","India","Indonesia","Italy","Japan","Mexico","Russia","SouthAfrica","SouthKorea","Turkey","UK","USA"] },
+  g20: {
+    id: "g20",
+    label: "G20 equity daily log-returns (18 markets, 2006–2026)",
+    description: "G20 equity indices, daily log-returns",
+    markets: G20_SERIES.length,        // 18 (names in `series` below)
+    series: G20_SERIES,                 // retained: validate() + chat tool enum
+    n: 5036,                            // retained: legacy callers
+    frequency: "daily",
+    start: "2006-01-12",               // first row of G20.xlsx (dd/mm/yyyy 12/01/2006)
+    end: "2026-03-18",                 // last row of G20.xlsx (18/03/2026)
+    source: "G20 equity indices, daily log-returns",
+    version: "2026-06",                // stable tag = vintage of this panel snapshot
+    sha256_hash: G20_HASH,             // file-byte sha256, cached at startup
+    access: "public",
+  },
+  // Honest placeholder — NOT a runnable dataset. No `series`, so validate() rejects
+  // any run against it. Intraday G20 collection is planned, not provisioned, hence
+  // version/hash are null and access is "restricted".
+  g20_intraday: {
+    id: "g20_intraday",
+    label: "G20 equity intraday (planned)",
+    description: "G20 equity intraday returns — planned via XIMB Bloomberg collaboration (not yet provisioned)",
+    markets: G20_SERIES.length,
+    frequency: "intraday",
+    start: null,
+    end: null,
+    source: "Bloomberg (planned, via XIMB collaboration)",
+    version: null,
+    sha256_hash: null,
+    access: "restricted",
+  },
 };
 
 // ── param validation (no arbitrary keys pass through) ──────────────────────────
@@ -283,6 +329,9 @@ function validate(methodId, params) {
   if (!m) throw new Error(`unknown method '${methodId}'`);
   const ds = params.dataset || "g20";
   if (!DATASETS[ds]) throw new Error(`unknown dataset '${ds}'`);
+  // restricted/unprovisioned panels (e.g. g20_intraday) are catalogue-only: no
+  // `series`, so they are not runnable — reject rather than crash on .series below.
+  if (!Array.isArray(DATASETS[ds].series)) throw new Error(`dataset '${ds}' is not available for analysis (access: ${DATASETS[ds].access || "restricted"})`);
   const clean = { dataset: ds };
   for (const [k, spec] of Object.entries(m.params)) {
     const v = params[k];
@@ -332,15 +381,22 @@ function permalink(method, clean) {
 }
 function provenance(method, spec, clean) {
   const ds = clean.dataset || "g20";
+  const panel = DATASETS[ds];
   return {
     method,
     method_version: (spec && spec.version) || null,
     engine_version: ENGINE_VERSION,
     engine_revision: process.env.K_REVISION || "local",
     params: clean,
+    // C.4 — panel provenance: which stored panel + its version + byte-hash, so a
+    // result is fully reproducible incl. data state. (live-fetch methods read no
+    // panel, but we still stamp the requested dataset id per the contract.)
+    panel_id: ds,
+    panel_version: (panel && panel.version) || null,
+    panel_hash: (panel && panel.sha256_hash) || null,
     data_vintage: spec && spec.fetch
       ? "live fetch: " + (clean.symbol || "?") + " (" + (clean.source || "yahoo") + ")"
-      : (DATASETS[ds] ? DATASETS[ds].label : ds),
+      : (panel ? panel.label : ds),
     timestamp: new Date().toISOString(),
     permalink: permalink(method, clean),
   };
@@ -429,6 +485,13 @@ async function fetchSeries(symbolRaw, sourceRaw) {
   }
 }
 // build the JSON arg for a run, fetching + injecting live data when method.fetch
+// TODO Tier C.2/C.3 — generalised live data. Today only `live_unit_root` (method.fetch)
+// pulls a live series; C.3 would let ANY registered method run on a live-fetched panel.
+// Intended design (mirrors the live_unit_root path above): the TRUSTED Node orchestrator
+// fetches the requested live series here — keeping the R sandbox net-isolated — and injects
+// them as numeric arrays before spawning R, with a fetched-data provenance stamp replacing
+// the stored panel_hash. C.2 (Bloomberg/intraday import feeding `g20_intraday`) is the data
+// source for that path; deferred until the XIMB Bloomberg feed exists.
 async function buildArgsJson(method, clean) {
   if (!method.fetch) return JSON.stringify(clean);
   const { series, resolved, source } = await fetchSeries(clean.symbol, clean.source);
