@@ -17,8 +17,8 @@ RUN . /etc/os-release && \
     R -e "options(repos=c(CRAN=paste0('https://packagemanager.posit.co/cran/__linux__/', Sys.getenv('CODENAME','jammy'), '/latest'))); \
           .codename <- '${VERSION_CODENAME}'; \
           options(repos=c(CRAN=paste0('https://packagemanager.posit.co/cran/__linux__/', .codename, '/latest'))); \
-          install.packages(c('jsonlite','readxl','urca','tseries','vars','waveslim','quantreg','plm','lmtest','frequencyConnectedness','igraph','rugarch','rmgarch'))" && \
-    R -e "for (p in c('jsonlite','readxl','urca','tseries','vars','waveslim','quantreg','plm','lmtest','frequencyConnectedness','igraph','rugarch','rmgarch')) if(!requireNamespace(p,quietly=TRUE)) stop(paste('MISSING',p))"
+          install.packages(c('jsonlite','readxl','urca','tseries','vars','waveslim','quantreg','plm','lmtest','frequencyConnectedness','igraph','rugarch','rmgarch','xts'))" && \
+    R -e "for (p in c('jsonlite','readxl','urca','tseries','vars','waveslim','quantreg','plm','lmtest','frequencyConnectedness','igraph','rugarch','rmgarch','xts','zoo','MASS')) if(!requireNamespace(p,quietly=TRUE)) stop(paste('MISSING',p))"
 
 # Published SOCH package (CRAN-candidate v0.1.0) from the bundled tarball — the
 # soch_profile method runs the paper's own code (Bhandari & Parida 2026), not a
@@ -27,6 +27,16 @@ COPY sochcontagion_0.1.0.tar.gz /tmp/sochcontagion.tar.gz
 RUN R CMD INSTALL /tmp/sochcontagion.tar.gz && \
     R -e "if(!requireNamespace('sochcontagion',quietly=TRUE)) stop('MISSING sochcontagion')" && \
     rm -f /tmp/sochcontagion.tar.gz
+
+# Published contagion-channels package (CRAN v0.1.3, GPL-3) from the bundled tarball
+# — the channel_attribution method runs the paper's own two-stage pipeline (Bhandari,
+# Parida & Sahu 2026, arXiv:2604.26546), reproducing Table 5, not a reimplementation.
+# Its bundled LazyData (g20_returns + channel_proxies + crisis_periods) is the data
+# source. Deps (xts, zoo, waveslim, quantreg, igraph, MASS, parallel) are installed above.
+COPY contagionchannels_0.1.3.tar.gz /tmp/contagionchannels.tar.gz
+RUN R CMD INSTALL /tmp/contagionchannels.tar.gz && \
+    R -e "if(!requireNamespace('contagionchannels',quietly=TRUE)) stop('MISSING contagionchannels')" && \
+    rm -f /tmp/contagionchannels.tar.gz
 
 # Node 20 (the server is zero-dep ESM; only needs node:http/https/child_process/fs).
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates gnupg && \

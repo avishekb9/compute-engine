@@ -146,6 +146,23 @@ const METHODS = {
     paper: "arXiv:2606.04113", deprecated: false,
     changelog: [{ version: "1.0.0", note: "Initial registry entry" }],
   },
+  channel_attribution: {
+    runner: "r", script: "channel_attribution.R",
+    label: "Channel Attribution — Table 5 (published contagionchannels)",
+    category: "Contagion · Channel Identification",
+    desc: "Per-crisis-episode attribution of cross-border contagion to five mutually exclusive transmission channels (Trade / Financial / Geopolitical / Behavioral / Monetary Policy), via the PUBLISHED contagionchannels package (Bhandari, Parida & Sahu 2026) — the paper's own two-stage pipeline (Stage-1 wavelet-quantile transfer-entropy detection + Stage-2 structural IV/2SLS attribution), not a reimplementation. Reproduces the paper's Table 5 over 8 episodes (PreCrisis…MidEastTariffs). Uses the package's BUNDLED data, not the g20 panel.",
+    dataset: "contagionchannels_bundled",
+    params: {
+      episodes: { type: "enum_multi", values: ["PreCrisis", "GFC", "ESDC", "CSC", "PreCOVID", "COVID", "RusUkr", "MidEastTariffs"], optional: true },
+      scale: { type: "int", optional: true },
+      tau: { type: "num", optional: true },
+      edge_quantile: { type: "num", optional: true },
+    },
+    version: "1.0.0", capability: "contagion", primitives: ["P2", "P3", "P7"], long_running: false, min_obs: null,
+    returns: ["method", "source", "paper", "channels", "scale", "tau", "edge_quantile", "threshold", "episodes", "interpretation"],
+    paper: "arXiv:2604.26546", deprecated: false,
+    changelog: [{ version: "1.0.0", note: "Published contagionchannels::run_contagion_pipeline (v0.1.3); reproduces Table 5 channel shares per episode" }],
+  },
   vecm: {
     runner: "r", script: "vecm.R",
     label: "Cointegration (Johansen VECM)",
@@ -289,6 +306,19 @@ const G20_HASH = (() => {
   catch (e) { console.error(`[panel] could not hash G20.xlsx at ${G20_PATH}: ${e.message}`); return null; }
 })();
 
+// contagionchannels package tarball (the bundled-data source for channel_attribution).
+// Verified sha256 of contagionchannels_0.1.3.tar.gz. We try to recompute it from the
+// build-context copy at boot; on the deployed image the tarball is installed-then-deleted,
+// so we fall back to this verified constant rather than reporting null.
+const CC_PKG_SHA256 = "1a3822cc524a3ae7fad4df182d820707b8dd115e99be54e83f6a7be4b7cb264e";
+const CC_PKG_HASH = (() => {
+  for (const c of [join(ENGINE_DIR, "contagionchannels_0.1.3.tar.gz"),
+                   join(REPO, "papers/contagion-channels/code/contagionchannels_0.1.3.tar.gz")]) {
+    try { if (existsSync(c)) return createHash("sha256").update(readFileSync(c)).digest("hex"); } catch {}
+  }
+  return CC_PKG_SHA256;   // installed-then-deleted in the image: use the verified hash
+})();
+
 const DATASETS = {
   g20: {
     id: "g20",
@@ -321,17 +351,40 @@ const DATASETS = {
     sha256_hash: null,
     access: "restricted",
   },
+  // Package-bundled panel for channel_attribution. NOT the g20 stored panel — the
+  // data lives INSIDE the published contagionchannels package (LazyData) and is read
+  // by the package's own loader, so there is no `series` selector here. version =
+  // package version; sha256 = the package tarball's byte hash. Runnable only via the
+  // bundled-data method (no `series` param → exempt from the runnable-panel guard).
+  contagionchannels_bundled: {
+    id: "contagionchannels_bundled",
+    label: "contagionchannels bundled data (G20 returns + channel proxies + crisis periods)",
+    description: "contagionchannels package LazyData (g20_returns + channel_proxies + crisis_periods)",
+    markets: 18,
+    frequency: "daily",
+    start: "2006-01-12",
+    end: "2026-03-18",
+    source: "contagionchannels package LazyData (g20_returns + channel_proxies + crisis_periods)",
+    version: "0.1.3",                   // package version = data vintage
+    sha256_hash: CC_PKG_HASH,           // sha256 of contagionchannels_0.1.3.tar.gz
+    access: "public",
+  },
 };
 
 // ── param validation (no arbitrary keys pass through) ──────────────────────────
 function validate(methodId, params) {
   const m = METHODS[methodId];
   if (!m) throw new Error(`unknown method '${methodId}'`);
-  const ds = params.dataset || "g20";
+  // A method may bind to a non-g20 dataset (e.g. a package-bundled panel) via its
+  // `dataset` field; otherwise default to g20. An explicit params.dataset still wins.
+  const ds = params.dataset || m.dataset || "g20";
   if (!DATASETS[ds]) throw new Error(`unknown dataset '${ds}'`);
-  // restricted/unprovisioned panels (e.g. g20_intraday) are catalogue-only: no
-  // `series`, so they are not runnable — reject rather than crash on .series below.
-  if (!Array.isArray(DATASETS[ds].series)) throw new Error(`dataset '${ds}' is not available for analysis (access: ${DATASETS[ds].access || "restricted"})`);
+  // Methods that select markets need a runnable panel with a `series` list.
+  // Package-bundled methods (no `series` param — data is internal to the package)
+  // are exempt: they don't read the stored panel. restricted/unprovisioned panels
+  // (e.g. g20_intraday) have no `series`, so they remain catalogue-only.
+  const needsSeries = Object.values(m.params).some(s => s.type === "series");
+  if (needsSeries && !Array.isArray(DATASETS[ds].series)) throw new Error(`dataset '${ds}' is not available for analysis (access: ${DATASETS[ds].access || "restricted"})`);
   const clean = { dataset: ds };
   for (const [k, spec] of Object.entries(m.params)) {
     const v = params[k];
@@ -360,6 +413,14 @@ function validate(methodId, params) {
       const s = String(v).trim().toLowerCase();
       if (!spec.values.includes(s)) throw new Error(`'${k}' must be one of: ${spec.values.join(", ")}`);
       clean[k] = s;
+    } else if (spec.type === "enum_multi") {
+      // multiselect: one or more values, each from the allowed set (case-sensitive
+      // — these are named periods like "GFC", "PreCrisis", not free text).
+      const arr = (Array.isArray(v) ? v : [v]).map(x => String(x).trim());
+      const badv = arr.filter(x => !spec.values.includes(x));
+      if (badv.length) throw new Error(`'${k}' has invalid value(s): ${badv.join(", ")} — allowed: ${spec.values.join(", ")}`);
+      if (!arr.length) throw new Error(`'${k}' needs at least one value`);
+      clean[k] = arr;
     }
   }
   // optional date window passthrough (validated as ISO-ish strings only)
