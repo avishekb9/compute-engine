@@ -751,8 +751,18 @@ const RESEARCH_SYS =
 
 async function researchTurn(query, userContext) {
   if (!query || !query.trim()) return { error: "empty query" };
-  const ctxPrefix = userContext && String(userContext).trim() ? `Context from the researcher: ${userContext}\n\n` : "";
+  let ctxPrefix = userContext && String(userContext).trim() ? `Context from the researcher: ${userContext}\n\n` : "";
   const analyses = [];
+
+  // 29.4 — literature pre-search: retrieve REAL papers/claims from literature.papers
+  // and inject them so the model cites the graph rather than inventing sources.
+  // Best-effort: any failure (or empty) degrades silently — never breaks /api/research.
+  try {
+    const litCtx = await buildLiteratureContext({ text: query });
+    const block = literatureContextBlock(litCtx);
+    if (block) ctxPrefix += block;
+    else logLine({ path: "/api/research", event: "literature_skip", status: litCtx?.status || "unknown", reason: litCtx?.reason || null });
+  } catch (e) { logLine({ path: "/api/research", event: "literature_error", error: e.message }); }
 
   // ── Phase A: agentic run_analysis loop (function tool only) ──
   const contents = [{ role: "user", parts: [{ text: ctxPrefix + query }] }];
@@ -805,6 +815,255 @@ async function researchTurn(query, userContext) {
   const citations = (gm.groundingChunks || []).map(c => ({ title: c.web?.title || null, uri: c.web?.uri || null })).filter(c => c.uri);
   const searches = gm.webSearchQueries || [];
   return { answer, citations, searches, analyses, model: RESEARCH_MODEL, steps: analyses.length };
+}
+
+// ── literature graph (Vision Phase 29.4/29.5) ─────────────────────────────────
+// Read-only retrieval over the companion-ingested BigQuery table
+//   hopeful-flash-485308-v3.literature.papers
+// (schema: paper_id, title, authors[], date, source, category, methods_mentioned[],
+//  datasets_mentioned[], results[]{claim,metric,value,context}, ingested_at, verified).
+// Every returned item comes from a REAL DB row — nothing is invented here. The actual
+// HTTP is behind a swappable seam (`_bqQuery`) so the logic is testable offline.
+const BQ_PROJECT = process.env.LITERATURE_PROJECT || "hopeful-flash-485308-v3";
+const BQ_DATASET = process.env.LITERATURE_DATASET || "literature";
+const BQ_TABLE   = "papers";
+const LIT_LIMIT  = 10;
+
+// Map a compute-engine method id (or free name) to the vocabulary papers actually
+// use, so methods_mentioned overlaps even when the paper says "DFA"/"Hurst" not
+// our internal "dfa_hurst" id. Best-effort; the SQL also matches the raw token.
+const METHOD_ALIASES = {
+  unit_root: ["ADF", "Augmented Dickey-Fuller", "KPSS", "unit root", "stationarity"],
+  panel_unit_root: ["IPS", "LLC", "panel unit root", "Im-Pesaran-Shin", "Levin-Lin-Chu"],
+  live_unit_root: ["ADF", "unit root", "stationarity"],
+  var_irf: ["VAR", "impulse response", "IRF", "vector autoregression"],
+  vecm: ["VECM", "cointegration", "Johansen", "error correction"],
+  granger: ["Granger causality", "Granger"],
+  dfa_hurst: ["DFA", "detrended fluctuation analysis", "Hurst", "long memory", "GPH"],
+  garch: ["GARCH", "volatility", "conditional heteroskedasticity"],
+  rolling_dcc: ["DCC-GARCH", "DCC", "dynamic conditional correlation"],
+  wavelet: ["MODWT", "wavelet", "wavelet variance", "multiresolution"],
+  wavelet_coherence: ["wavelet coherence", "coherence", "phase"],
+  wqte: ["transfer entropy", "WQTE", "wavelet quantile transfer entropy", "quantile transfer entropy"],
+  quantile_var: ["quantile VAR", "QVAR", "quantile connectedness"],
+  connectedness: ["connectedness", "Diebold-Yilmaz", "spillover", "GFEVD", "Barunik-Krehlik"],
+  spillover_rolling: ["spillover", "connectedness", "rolling spillover", "Diebold-Yilmaz"],
+  network: ["network", "igraph", "community detection", "centrality"],
+  soch_profile: ["contagion", "spillover", "systemic risk"],
+};
+function derivedMethodNames(method) {
+  if (!method) return [];
+  const key = String(method).toLowerCase().trim();
+  const out = new Set([String(method).trim()]);
+  if (METHOD_ALIASES[key]) for (const a of METHOD_ALIASES[key]) out.add(a);
+  return [...out].filter(Boolean);
+}
+
+// The swappable seam. realBqQuery runs the parameterised jobs.query REST call with
+// the metadata OAuth bearer; selftest replaces it with a stub. Contract:
+//   in : (sql:string, queryParameters:array)
+//   out: Promise<{ok:true, rows:[<plain row obj>]} | {ok:false, status, error}>
+// realBqQuery is responsible for decoding BigQuery's typed {f:[{v}]} row shape into
+// plain objects, so the seam boundary is plain rows (keeps mocks trivial + honest).
+function bqDecodeRows(json) {
+  const fields = (json?.schema?.fields) || [];
+  const rows = (json?.rows) || [];
+  const decodeField = (field, cell) => {
+    if (cell == null) return field.mode === "REPEATED" ? [] : null;
+    if (field.mode === "REPEATED") {
+      // REPEATED cell: { v: [ { v: <scalar|struct> }, ... ] }
+      const arr = Array.isArray(cell.v) ? cell.v : [];
+      return arr.map((e) => decodeScalarOrRecord(field, e?.v));
+    }
+    return decodeScalarOrRecord(field, cell.v);
+  };
+  const decodeScalarOrRecord = (field, v) => {
+    if (field.type === "RECORD" || field.type === "STRUCT") {
+      const sub = field.fields || [];
+      const obj = {};
+      const fcells = (v && Array.isArray(v.f)) ? v.f : [];
+      sub.forEach((sf, i) => { obj[sf.name] = decodeField(sf, fcells[i]); });
+      return obj;
+    }
+    return v; // scalar (string/number come back as strings from BQ; callers coerce)
+  };
+  return rows.map((row) => {
+    const obj = {};
+    const cells = (row && Array.isArray(row.f)) ? row.f : [];
+    fields.forEach((f, i) => { obj[f.name] = decodeField(f, cells[i]); });
+    return obj;
+  });
+}
+function realBqQuery(sql, queryParameters) {
+  return new Promise((resolve) => {
+    metadataToken().then((tok) => {
+      if (!tok) return resolve({ ok: false, status: 0, error: "no OAuth token (metadata server unreachable)" });
+      const payload = Buffer.from(JSON.stringify({
+        query: sql, useLegacySql: false, parameterMode: "NAMED", queryParameters, timeoutMs: 3000,
+      }));
+      const u = new URL(`https://bigquery.googleapis.com/bigquery/v2/projects/${encodeURIComponent(BQ_PROJECT)}/queries`);
+      const req = httpsRequest(u, { method: "POST", headers: {
+        "Authorization": `Bearer ${tok}`, "Content-Type": "application/json", "Content-Length": payload.length,
+      }, timeout: 4000 }, (r) => {
+        let b = ""; r.on("data", (d) => (b += d));
+        r.on("end", () => {
+          if (r.statusCode !== 200) return resolve({ ok: false, status: r.statusCode, error: `bigquery ${r.statusCode}: ${b.slice(0, 200)}` });
+          let json; try { json = JSON.parse(b); } catch { return resolve({ ok: false, status: 200, error: "bigquery bad JSON" }); }
+          if (json.jobComplete === false) return resolve({ ok: false, status: 200, error: "bigquery job not complete within timeoutMs" });
+          try { return resolve({ ok: true, rows: bqDecodeRows(json) }); }
+          catch (e) { return resolve({ ok: false, status: 200, error: `bigquery row-decode failed: ${e.message}` }); }
+        });
+      });
+      req.on("error", (e) => resolve({ ok: false, status: 0, error: `bigquery network: ${e.message}` }));
+      req.on("timeout", () => { req.destroy(); resolve({ ok: false, status: 0, error: "bigquery timeout" }); });
+      req.write(payload); req.end();
+    }).catch((e) => resolve({ ok: false, status: 0, error: `metadata: ${e.message}` }));
+  });
+}
+let _bqQuery = realBqQuery;                       // SWAPPABLE seam (selftest overrides)
+export function __setBqQuery(fn) { _bqQuery = fn || realBqQuery; }   // test hook only
+
+// Coerce a results.value into a number + sign for deterministic claim comparison.
+// Handles "0.915", "-0.04", "AUC = 0.58", "increases by 12%". Returns {num, sign}
+// where sign ∈ {-1,0,1,null}; null = no parseable magnitude (treated as related-only).
+function valueSign(value) {
+  if (value == null) return { num: null, sign: null };
+  if (typeof value === "number") return { num: value, sign: Math.sign(value) || 0 };
+  const s = String(value);
+  const m = s.match(/-?\d+(?:\.\d+)?/);
+  if (!m) {
+    if (/\b(increase|positive|rise|up|amplif|stronger)\b/i.test(s)) return { num: null, sign: 1 };
+    if (/\b(decrease|negative|fall|down|weaker|attenuat)\b/i.test(s)) return { num: null, sign: -1 };
+    return { num: null, sign: null };
+  }
+  let num = parseFloat(m[0]);
+  if (/\b(decrease|negative|fall|down|weaker|attenuat)\b/i.test(s) && num > 0) num = -num;
+  return { num, sign: Math.sign(num) || 0 };
+}
+const norm = (x) => String(x == null ? "" : x).toLowerCase().trim();
+
+// queryLiterature(ctx) — ctx = {method?, series?:[], quantile?, text?}.
+// Builds a parameterised Standard-SQL SELECT and runs it through the seam. NEVER
+// throws into the caller; any failure → {status:"unavailable", reason, papers_found:0, papers:[]}.
+async function queryLiterature(ctx = {}) {
+  try {
+    const methodNames = derivedMethodNames(ctx.method);
+    const series = Array.isArray(ctx.series) ? ctx.series.filter(Boolean).map(String) : [];
+    const text = ctx.text != null && String(ctx.text).trim() ? String(ctx.text).trim().slice(0, 200) : null;
+
+    // Parameterised WHERE: each clause is OR-combined; arrays use UNNEST overlap.
+    const where = [];
+    const params = [];
+    const addArr = (name, vals, type = "STRING") => {
+      params.push({ name, parameterType: { type: "ARRAY", arrayType: { type } },
+        parameterValue: { arrayValues: vals.map((v) => ({ value: String(v) })) } });
+    };
+    if (methodNames.length) {
+      addArr("methods", methodNames);
+      // methods_mentioned (array) overlaps any derived name (case-insensitive)
+      where.push("EXISTS (SELECT 1 FROM UNNEST(methods_mentioned) m JOIN UNNEST(@methods) q ON LOWER(m) = LOWER(q))");
+    }
+    if (series.length) {
+      addArr("series", series);
+      // datasets_mentioned overlap OR a result.context mentions the series token
+      where.push("EXISTS (SELECT 1 FROM UNNEST(datasets_mentioned) d JOIN UNNEST(@series) q ON LOWER(d) = LOWER(q))");
+      where.push("EXISTS (SELECT 1 FROM UNNEST(results) r JOIN UNNEST(@series) q ON LOWER(r.context) LIKE CONCAT('%', LOWER(q), '%'))");
+    }
+    if (text) {
+      params.push({ name: "text", parameterType: { type: "STRING" }, parameterValue: { value: text } });
+      where.push("LOWER(title) LIKE CONCAT('%', LOWER(@text), '%')");
+    }
+    if (!where.length) return { status: "ok", papers_found: 0, papers: [] };   // nothing to match on
+
+    const sql =
+      "SELECT paper_id, title, authors, date, category, methods_mentioned, datasets_mentioned, results\n" +
+      `FROM \`${BQ_PROJECT}.${BQ_DATASET}.${BQ_TABLE}\`\n` +
+      `WHERE ${where.join(" OR ")}\n` +
+      `LIMIT ${LIT_LIMIT}`;
+
+    const res = await _bqQuery(sql, params);
+    if (!res || !res.ok) {
+      return { status: "unavailable", reason: (res && res.error) || "unknown bigquery error", papers_found: 0, papers: [] };
+    }
+    const papers = (res.rows || []).map((row) => ({
+      paper_id: row.paper_id ?? null,
+      title: row.title ?? null,
+      authors: Array.isArray(row.authors) ? row.authors : [],
+      date: row.date ?? null,
+      category: row.category ?? null,
+      methods: Array.isArray(row.methods_mentioned) ? row.methods_mentioned : [],
+      datasets: Array.isArray(row.datasets_mentioned) ? row.datasets_mentioned : [],
+      claims: (Array.isArray(row.results) ? row.results : []).map((r) => ({
+        claim: r?.claim ?? null, metric: r?.metric ?? null, value: r?.value ?? null, context: r?.context ?? null,
+      })),
+    })).filter((p) => p.paper_id);   // drop any row without a real id (no phantom papers)
+    return { status: "ok", papers_found: papers.length, papers };
+  } catch (e) {
+    return { status: "unavailable", reason: `queryLiterature: ${e.message}`, papers_found: 0, papers: [] };
+  }
+}
+
+// buildLiteratureContext(ctx, result?) — assembles a citation-safe context from the
+// REAL retrieved rows ONLY. Classification is DETERMINISTIC (no LLM): a retrieved
+// claim is `supporting` if it shares metric+context with `result` and the same sign;
+// `conflicting` if same metric+context but opposite sign; else it is just a related
+// paper. Empty context is acceptable. NEVER adds a paper/claim not in the rows.
+async function buildLiteratureContext(ctx = {}, result) {
+  const lit = await queryLiterature(ctx);
+  const empty = {
+    papers_found: lit.papers_found || 0, status: lit.status,
+    related_papers: [], related_methods: [], supporting_claims: [], conflicting_claims: [],
+  };
+  if (lit.status !== "ok" || !lit.papers.length) {
+    if (lit.reason) empty.reason = lit.reason;
+    return empty;
+  }
+  // Derive the (metric, context, sign) targets from `result`, if any.
+  const targets = [];
+  if (result && typeof result === "object") {
+    const rmetric = result.metric ?? null;
+    const rcontext = result.context ?? null;
+    const { sign: rsign } = valueSign(result.value);
+    if (rmetric != null) targets.push({ metric: norm(rmetric), context: norm(rcontext), sign: rsign });
+  }
+
+  const related_papers = lit.papers.map((p) => ({ paper_id: p.paper_id, title: p.title, date: p.date }));
+  const methodSet = new Set();
+  for (const p of lit.papers) for (const m of p.methods) if (m) methodSet.add(m);
+
+  const supporting_claims = [], conflicting_claims = [];
+  for (const p of lit.papers) {
+    for (const c of p.claims) {
+      if (!targets.length) continue;
+      const cm = norm(c.metric), cc = norm(c.context);
+      const { sign: csign } = valueSign(c.value);
+      for (const t of targets) {
+        if (!t.metric || cm !== t.metric || cc !== t.context) continue;   // must share metric+context
+        if (t.sign == null || csign == null || t.sign === 0 || csign === 0) continue;  // need a definite direction both sides
+        const entry = { paper_id: p.paper_id, claim: c.claim, metric: c.metric, value: c.value, context: c.context };
+        if (csign === t.sign) supporting_claims.push(entry);
+        else conflicting_claims.push(entry);
+        break;   // one target match is enough per claim
+      }
+    }
+  }
+  return {
+    papers_found: lit.papers_found, status: lit.status,
+    related_papers, related_methods: [...methodSet], supporting_claims, conflicting_claims,
+  };
+}
+
+// 29.4 — render the retrieved context as a prompt block. Returns "" when there is
+// nothing real to inject (unavailable OR empty) so /api/research degrades silently.
+function literatureContextBlock(litCtx) {
+  if (!litCtx || litCtx.status !== "ok" || !litCtx.related_papers.length) return "";
+  return "\n\nLITERATURE GRAPH CONTEXT (retrieved from literature.papers; cite these, do not invent):\n" +
+    JSON.stringify({
+      related_papers: litCtx.related_papers,
+      related_methods: litCtx.related_methods,
+      supporting_claims: litCtx.supporting_claims,
+      conflicting_claims: litCtx.conflicting_claims,
+    }) + "\n";
 }
 
 // ── job log ─────────────────────────────────────────────────────────────────────
@@ -1034,6 +1293,31 @@ const server = createServer(async (req, res) => {
     return;
   }
 
+  // 29.5 — auto-situate: deterministic literature context for a method/result/text.
+  // Read-only, no LLM, no credit spend (so it sits outside the metered-route block);
+  // graceful-degrade is inherited from buildLiteratureContext (never throws).
+  if (u.pathname === "/api/situate" && req.method === "POST") {
+    if (!rateLimit(ip, "/api/situate", 30).ok) return send(429, "application/json", JSON.stringify({ error: "rate_limit", message: "Too many requests — slow down." }));
+    let body = "", tooBig = false;
+    req.on("data", d => { if (body.length + d.length > MAX_BODY_BYTES) { tooBig = true; return; } body += d; });
+    req.on("end", async () => {
+      if (tooBig) return send(413, "application/json", JSON.stringify({ error: "payload_too_large", message: "Request body too large." }));
+      let payload;
+      try { payload = JSON.parse(body || "{}"); } catch { return send(400, "application/json", JSON.stringify({ error: "bad JSON body" })); }
+      try {
+        const literature_context = await buildLiteratureContext(
+          { method: payload.method, series: payload.series, quantile: payload.quantile, text: payload.text },
+          payload.result,
+        );
+        return send(200, "application/json", JSON.stringify({ literature_context }));
+      } catch (e) {
+        // belt-and-braces: still degrade, never 500 the caller
+        return send(200, "application/json", JSON.stringify({ literature_context: { papers_found: 0, status: "unavailable", reason: e.message, related_papers: [], related_methods: [], supporting_claims: [], conflicting_claims: [] } }));
+      }
+    });
+    return;
+  }
+
   // ── public job permalink: GET /api/jobs/:id → mirrored GCS record (read-only) ──
   const jm = u.pathname.match(/^\/api\/jobs\/([A-Za-z0-9_-]{1,128})$/);
   if (jm && req.method === "GET") {
@@ -1067,10 +1351,90 @@ setInterval(sweep, 60 * 1000).unref();
 server.requestTimeout = 30000;
 server.headersTimeout = 15000;
 
-server.listen(PORT, HOST, () => {
-  console.log(`✓ Compute Engine on http://${HOST}:${PORT}`);
-  console.log(`  sandbox: ${HAVE_BWRAP ? "bwrap (net-isolated, ro-fs)" : "timeout fallback"}`);
-  console.log(`  methods: ${Object.keys(METHODS).join(", ")}`);
-  console.log(`  guards: cache(5m TTL) · rate-limit(run 20/min, chat 10/min) · /metrics`);
-  console.log(`  dashboard: http://${HOST}:${PORT}/   ·   catalog: /api/compute/catalog`);
-});
+// ── selftest (Phase 29.4/29.5 literature logic) — local, no network, no server ──
+// Overrides the `_bqQuery` seam with mock rows and asserts the deterministic
+// situating logic. Run: `node compute-server.mjs --selftest`. Exits non-zero on fail.
+async function selftest() {
+  let pass = 0, fail = 0;
+  const ok = (cond, msg) => { if (cond) { pass++; } else { fail++; console.error("  ✗ " + msg); } };
+
+  // Mock rows in the SEAM's plain-row shape (what realBqQuery yields post-decode).
+  const MOCK_ROWS = [
+    { paper_id: "arXiv:2507.08065", title: "MCPFM systemic risk", authors: ["Bhandari, A."], date: "2025-07-10",
+      category: "systemic-risk", methods_mentioned: ["transfer entropy", "DFA"], datasets_mentioned: ["G20"],
+      results: [{ claim: "SRI discriminates crises", metric: "AUC", value: "0.915", context: "US/COVID" }] },
+    { paper_id: "arXiv:2604.26546", title: "Contagion channels", authors: ["Bhandari, A."], date: "2026-04-01",
+      category: "contagion", methods_mentioned: ["GARCH"], datasets_mentioned: ["G20"],
+      results: [{ claim: "weak discrimination", metric: "AUC", value: "-0.40", context: "US/COVID" }] },
+    { paper_id: "wp:namh-2026", title: "Network Adaptive Market Hypothesis", authors: ["Bhandari, A."], date: "2026-01-15",
+      category: "market-structure", methods_mentioned: ["MODWT", "wavelet"], datasets_mentioned: ["S&P500"],
+      results: [{ claim: "scale dependence", metric: "variance-share", value: "0.47", context: "d1" }] },
+  ];
+  const idsIn = new Set(MOCK_ROWS.map(r => r.paper_id));
+
+  // (a) MOCK rows → correct related_papers/methods + a SUPPORTING + a CONFLICTING claim.
+  __setBqQuery(async () => ({ ok: true, rows: MOCK_ROWS }));
+  const result = { metric: "AUC", value: "0.90", context: "US/COVID" };   // positive AUC in US/COVID
+  const ctxA = await buildLiteratureContext({ text: "systemic risk AUC" }, result);
+  ok(ctxA.status === "ok", "(a) status ok");
+  ok(ctxA.papers_found === 3 && ctxA.related_papers.length === 3, "(a) 3 related papers");
+  ok(ctxA.related_methods.includes("transfer entropy") && ctxA.related_methods.includes("MODWT"), "(a) related_methods aggregated");
+  ok(ctxA.supporting_claims.length === 1 && ctxA.supporting_claims[0].paper_id === "arXiv:2507.08065",
+     "(a) SUPPORTING = AUC 0.915 US/COVID (same metric+context+sign)");
+  ok(ctxA.conflicting_claims.length === 1 && ctxA.conflicting_claims[0].paper_id === "arXiv:2604.26546",
+     "(a) CONFLICTING = AUC -0.40 US/COVID (opposite sign)");
+  // the d1 variance-share claim shares neither metric nor context with the result → related-only
+  ok(!ctxA.supporting_claims.concat(ctxA.conflicting_claims).some(c => c.paper_id === "wp:namh-2026"),
+     "(a) non-matching metric/context stays related-only");
+
+  // (b) MOCK error / non-200 → unavailable, empty arrays, NO throw.
+  __setBqQuery(async () => ({ ok: false, status: 404, error: "Not found: Dataset literature" }));
+  let threw = false, ctxB;
+  try { ctxB = await buildLiteratureContext({ text: "anything" }, result); } catch { threw = true; }
+  ok(!threw, "(b) no throw on backend error");
+  ok(ctxB.status === "unavailable", "(b) status unavailable");
+  ok(ctxB.related_papers.length === 0 && ctxB.related_methods.length === 0 &&
+     ctxB.supporting_claims.length === 0 && ctxB.conflicting_claims.length === 0, "(b) all arrays empty");
+  // also a thrown seam (not just non-200) must still degrade
+  __setBqQuery(async () => { throw new Error("network down"); });
+  let threw2 = false, ctxB2;
+  try { ctxB2 = await queryLiterature({ text: "x" }); } catch { threw2 = true; }
+  ok(!threw2 && ctxB2.status === "unavailable" && ctxB2.papers.length === 0, "(b) thrown seam degrades to unavailable");
+
+  // (c) NO-HALLUCINATION: every paper_id in the context exists in the mock input rows.
+  __setBqQuery(async () => ({ ok: true, rows: MOCK_ROWS }));
+  const ctxC = await buildLiteratureContext({ text: "systemic risk AUC" }, result);
+  const outIds = [
+    ...ctxC.related_papers.map(p => p.paper_id),
+    ...ctxC.supporting_claims.map(c => c.paper_id),
+    ...ctxC.conflicting_claims.map(c => c.paper_id),
+  ];
+  ok(outIds.length > 0 && outIds.every(id => idsIn.has(id)), "(c) every output paper_id ∈ mock rows (no hallucination)");
+
+  // (d) /api/research injection helper: NO block when unavailable; block when ok+populated.
+  __setBqQuery(async () => ({ ok: false, status: 403, error: "denied" }));
+  const blockUnavail = literatureContextBlock(await buildLiteratureContext({ text: "q" }, result));
+  ok(blockUnavail === "", "(d) injection block empty when unavailable");
+  __setBqQuery(async () => ({ ok: true, rows: MOCK_ROWS }));
+  const blockOk = literatureContextBlock(await buildLiteratureContext({ text: "q" }, result));
+  ok(blockOk.includes("LITERATURE GRAPH CONTEXT") && blockOk.includes("arXiv:2507.08065"), "(d) injection block present + real id when ok");
+  // empty-rows ok → still no block (empty context is acceptable, nothing to cite)
+  __setBqQuery(async () => ({ ok: true, rows: [] }));
+  ok(literatureContextBlock(await buildLiteratureContext({ text: "q" }, result)) === "", "(d) no block when ok-but-empty");
+
+  __setBqQuery(null);   // restore real seam
+  console.log(`\nselftest: ${pass} passed, ${fail} failed`);
+  return fail === 0;
+}
+
+if (process.argv.includes("--selftest")) {
+  selftest().then((good) => process.exit(good ? 0 : 1)).catch((e) => { console.error(e); process.exit(1); });
+} else {
+  server.listen(PORT, HOST, () => {
+    console.log(`✓ Compute Engine on http://${HOST}:${PORT}`);
+    console.log(`  sandbox: ${HAVE_BWRAP ? "bwrap (net-isolated, ro-fs)" : "timeout fallback"}`);
+    console.log(`  methods: ${Object.keys(METHODS).join(", ")}`);
+    console.log(`  guards: cache(5m TTL) · rate-limit(run 20/min, chat 10/min) · /metrics`);
+    console.log(`  dashboard: http://${HOST}:${PORT}/   ·   catalog: /api/compute/catalog`);
+  });
+}
