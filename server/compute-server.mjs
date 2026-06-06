@@ -288,6 +288,17 @@ const METHODS = {
     paper: null, deprecated: false,
     changelog: [{ version: "1.0.0", note: "Exact KSG conditional-MI transfer entropy + IAAFT surrogates; async-only" }],
   },
+  ksg_robustness: {
+    runner: "r", script: "ksg_robustness.R",
+    label: "KSG Transfer Entropy — k/lag Robustness (async diagnostic)",
+    category: "Contagion · Information Flow (diagnostic)",
+    desc: "Sensitivity sweep of the KSG transfer-entropy result over a grid of the neighbour count k and history length lag. Reuses the SAME validated KSG/Frenzel-Pompe point estimator as ksg_te (no surrogates → fast per grid point) and reports how stable the directed-TE magnitudes and rankings are: Spearman rank correlation of the full directed-TE vector vs the (k=4,lag=1) baseline, top-10 directed-edge Jaccard overlap, and the rank of the baseline's #1 edge at every grid point. Checks TE magnitude/ranking stability across (k,lag), NOT significance-count stability (which would need surrogates at each grid point). Heavy on the full 18-market grid (k×lag × all directed pairs) — runs ONLY as a background job via /api/jobs/submit; discoverable here but rejected by the sync /api/compute/run endpoint.",
+    params: { series: { type: "series", n: [2, 18], optional: true }, k_grid: { type: "int_array", optional: true }, lag_grid: { type: "int_array", optional: true }, max_pairs: { type: "int", optional: true } },
+    version: "1.0.0", capability: "contagion", primitives: ["P3", "P4"], long_running: true, min_obs: 200,
+    returns: ["method", "dataset", "k_grid", "lag_grid", "n_series", "n_obs", "n_pairs", "baseline", "grid", "stability", "runtime_s", "interpretation"],
+    paper: null, deprecated: false,
+    changelog: [{ version: "1.0.0", note: "k/lag sensitivity sweep of the KSG-TE point estimator (Tier G.3 diagnostic); reuses ksg_te's validated estimator verbatim; async-only" }],
+  },
 };
 
 // ── panel registry (Tier C.1) ─────────────────────────────────────────────────
@@ -401,6 +412,11 @@ function validate(methodId, params) {
       const i = parseInt(v, 10);
       if (!Number.isFinite(i)) throw new Error(`'${k}' must be an integer`);
       clean[k] = i;
+    } else if (spec.type === "int_array") {
+      // grid param (e.g. ksg_robustness k_grid/lag_grid): one or more positive integers.
+      const arr = (Array.isArray(v) ? v : [v]).map(x => parseInt(x, 10));
+      if (!arr.length || arr.some(i => !Number.isFinite(i) || i <= 0)) throw new Error(`'${k}' must be an array of positive integers`);
+      clean[k] = arr;
     } else if (spec.type === "num") {
       const x = Number(v);
       if (!Number.isFinite(x)) throw new Error(`'${k}' must be a number`);
