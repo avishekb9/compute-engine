@@ -1,0 +1,22 @@
+[
+  { "name": "paper_id",          "type": "STRING",    "mode": "REQUIRED", "description": "arXiv abs id (e.g. 2604.12345v1) or ssrn/nber id" },
+  { "name": "title",             "type": "STRING",    "mode": "NULLABLE", "description": "paper title, whitespace-normalised" },
+  { "name": "authors",           "type": "STRING",    "mode": "REPEATED", "description": "author display names in source order" },
+  { "name": "date",              "type": "DATE",      "mode": "NULLABLE", "description": "submitted/published date (YYYY-MM-DD)" },
+  { "name": "source",            "type": "STRING",    "mode": "NULLABLE", "description": "arxiv | ssrn | nber" },
+  { "name": "category",          "type": "STRING",    "mode": "NULLABLE", "description": "primary subject category (e.g. econ.EM)" },
+  { "name": "methods_mentioned", "type": "STRING",    "mode": "REPEATED", "description": "econometric methods extracted by Gemini" },
+  { "name": "datasets_mentioned","type": "STRING",    "mode": "REPEATED", "description": "datasets named in the abstract" },
+  {
+    "name": "results", "type": "RECORD", "mode": "REPEATED",
+    "description": "structured numeric claims extracted from the abstract",
+    "fields": [
+      { "name": "claim",   "type": "STRING", "mode": "NULLABLE", "description": "the claim sentence/phrase" },
+      { "name": "metric",  "type": "STRING", "mode": "NULLABLE", "description": "what is measured (e.g. RMSE, coefficient, R2)" },
+      { "name": "value",   "type": "FLOAT",  "mode": "NULLABLE", "description": "numeric value if any; null otherwise" },
+      { "name": "context", "type": "STRING", "mode": "NULLABLE", "description": "qualifying context for the claim" }
+    ]
+  },
+  { "name": "ingested_at", "type": "TIMESTAMP", "mode": "NULLABLE", "description": "wall-clock ingest time (ISO-8601)" },
+  { "name": "verified",    "type": "BOOL",      "mode": "NULLABLE", "description": "human/automated verification flag; false on ingest" }
+]
