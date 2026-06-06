@@ -152,11 +152,22 @@ async function fetchArxiv(cat, maxResults) {
   const url = `${ARXIV_API}?search_query=cat:${encodeURIComponent(cat)}`
     + `&start=0&max_results=${maxResults}`
     + `&sortBy=submittedDate&sortOrder=descending`;
-  const res = await fetch(url, { redirect: "follow", headers: { "User-Agent": "econstellar-literature/29 (avishekb@iitbbs.ac.in)" } });
-  const body = await res.text();
-  if (!res.ok) throw new Error(`arXiv HTTP ${res.status}`);
-  if (/^\s*Rate exceeded\.?\s*$/i.test(body)) throw new Error("arXiv rate limited ('Rate exceeded.')");
-  return parseArxivFeed(body);
+  // arXiv 429s an over-eager IP; retry with backoff (honour Retry-After) before giving up.
+  const backoffs = [10000, 30000, 60000];
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(url, { redirect: "follow", headers: { "User-Agent": "econstellar-literature/29 (avishekb@iitbbs.ac.in)" } });
+    const body = await res.text();
+    const rateLimited = res.status === 429 || res.status === 503 || /^\s*Rate exceeded\.?\s*$/i.test(body);
+    if (res.ok && !rateLimited) return parseArxivFeed(body);
+    if (rateLimited && attempt < backoffs.length) {
+      const ra = parseInt(res.headers.get("retry-after") || "", 10);
+      const wait = (Number.isFinite(ra) && ra > 0) ? ra * 1000 : backoffs[attempt];
+      log(`arXiv ${res.status || "rate-limited"} for ${cat} — backoff ${Math.round(wait / 1000)}s (retry ${attempt + 1}/${backoffs.length})`);
+      await sleep(wait);
+      continue;
+    }
+    throw new Error(`arXiv HTTP ${res.status}${rateLimited ? " (rate limited after retries)" : ""}`);
+  }
 }
 
 async function extractWithGemini(abstract) {
