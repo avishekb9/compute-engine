@@ -93,6 +93,32 @@ async function mirrorToGcs(job) {
   } catch (e) { console.log(`[job-server] gcs-mirror exception ${job.job_id}: ${e.message}`); }
 }
 
+// Notebook publish (operator-write). MIRRORS mirrorToGcs's GCS upload (same bucket,
+// same fetchGcloudToken auth, same uploadType=media POST) but under the notebooks/
+// prefix, and — unlike the fire-and-forget job mirror — RESOLVES with the upload
+// status so the handler can refuse to hand back a permalink for an object that
+// never landed. Returns true on a 2xx write, false otherwise.
+function publishNotebookToGcs(id, payload) {
+  return new Promise((resolve) => {
+    fetchGcloudToken().then((tok) => {
+      if (!tok) { console.log(`[job-server] notebook-publish no token ${id}`); return resolve(false); }
+      const data = Buffer.from(JSON.stringify(payload));
+      const url = `https://storage.googleapis.com/upload/storage/v1/b/${encodeURIComponent(JOBS_BUCKET)}/o`
+        + `?uploadType=media&name=${encodeURIComponent("notebooks/" + id + ".json")}`;
+      const req = https.request(url, { method: "POST", timeout: 15000,
+        headers: { "Authorization": `Bearer ${tok}`, "Content-Type": "application/json", "Content-Length": data.length } },
+        (r) => { r.resume(); r.on("end", () => {
+          const ok = r.statusCode >= 200 && r.statusCode < 300;
+          console.log(`[job-server] notebook-publish ${ok ? "ok" : "failed (HTTP " + r.statusCode + ")"} ${id} -> gs://${JOBS_BUCKET}/notebooks/${id}.json`);
+          resolve(ok);
+        }); });
+      req.on("error", (e) => { console.log(`[job-server] notebook-publish error ${id}: ${e.message}`); resolve(false); });
+      req.on("timeout", () => { req.destroy(); console.log(`[job-server] notebook-publish timeout ${id}`); resolve(false); });
+      req.end(data);
+    });
+  });
+}
+
 function loadAll() {
   for (const f of fs.readdirSync(JOBS_DIR).filter(f => f.endsWith(".json"))) {
     try {
@@ -208,6 +234,29 @@ const server = http.createServer((req, res) => {
       };
       jobs.set(id, job); persist(job); queue.push(id); pump();
       return sendJSON(res, 202, { job_id: id, status: "queued", poll_url: `/api/jobs/${id}`, stream_url: `/api/jobs/${id}/stream`, permalink });
+    });
+    return;
+  }
+
+  // Notebook publish (operator-write; operator-only by virtue of the 127.0.0.1 bind).
+  // Mirrors a serialized notebook spec to gs://<JOBS_BUCKET>/notebooks/<id>.json so the
+  // public Cloud Run kernel can serve it read-only at GET /api/notebooks/:id.
+  if (p === "/api/notebooks" && req.method === "POST") {
+    let body = ""; req.on("data", d => { body += d; if (body.length > 2 * 1024 * 1024) req.destroy(); });
+    req.on("end", () => {
+      let b; try { b = JSON.parse(body || "{}"); } catch { return sendJSON(res, 400, { error: "bad JSON" }); }
+      const nb = b.notebook;
+      if (!nb || typeof nb !== "object" || !Array.isArray(nb.cells)) return sendJSON(res, 400, { error: "notebook must be an object with a 'cells' array" });
+      const id = `nb_${new Date().toISOString().slice(0, 10).replace(/-/g, "")}_${crypto.randomBytes(4).toString("hex")}`;
+      const payload = { id, published_at: now(), workspace: b.workspace ? String(b.workspace) : null, notebook: nb };
+      publishNotebookToGcs(id, payload).then((ok) => {
+        if (!ok) return sendJSON(res, 502, { error: "notebook publish to storage failed" });
+        return sendJSON(res, 200, {
+          id,
+          url: `https://shssm-compute-b7ui3oxaqq-el.a.run.app/api/notebooks/${id}`,
+          permalink: `https://avishekb9.github.io/econstellar/research-engine.html#nb=${id}`,
+        });
+      });
     });
     return;
   }

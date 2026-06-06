@@ -851,6 +851,23 @@ function fetchJobRecord(id) {
     });
   });
 }
+// Public read-front for operator-published notebooks. MIRRORS fetchJobRecord exactly
+// (same metadataToken auth, same GCS object GET) but under the notebooks/ prefix.
+// Read-only: notebooks are written only by the operator-bound job-server, never here.
+function fetchNotebookRecord(id) {
+  return new Promise((resolve) => {
+    metadataToken().then((tok) => {
+      if (!tok) return resolve({ status: 0, body: null });
+      const u = new URL(`https://storage.googleapis.com/storage/v1/b/${encodeURIComponent(JOBS_BUCKET)}/o/${encodeURIComponent("notebooks/" + id + ".json")}?alt=media`);
+      const req = httpsRequest(u, { method: "GET", headers: { "Authorization": `Bearer ${tok}` }, timeout: 15000 }, (r) => {
+        let b = ""; r.on("data", d => b += d); r.on("end", () => resolve({ status: r.statusCode, body: b }));
+      });
+      req.on("error", () => resolve({ status: 0, body: null }));
+      req.on("timeout", () => { req.destroy(); resolve({ status: 0, body: null }); });
+      req.end();
+    });
+  });
+}
 
 // ── HTTP ─────────────────────────────────────────────────────────────────────
 const MIME = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json" };
@@ -1024,6 +1041,15 @@ const server = createServer(async (req, res) => {
     if (status === 200 && body) return send(200, "application/json", body);
     if (status === 404) return send(404, "application/json", JSON.stringify({ error: "unknown or expired job" }));
     return send(status === 0 ? 502 : status, "application/json", JSON.stringify({ error: "job lookup failed" }));
+  }
+
+  // ── public notebook permalink: GET /api/notebooks/:id → mirrored GCS record (read-only) ──
+  const nbm = u.pathname.match(/^\/api\/notebooks\/(nb_[a-z0-9_]+)$/);
+  if (nbm && req.method === "GET") {
+    const { status, body } = await fetchNotebookRecord(nbm[1]);
+    if (status === 200 && body) return send(200, "application/json", body);
+    if (status === 404) return send(404, "application/json", JSON.stringify({ error: "unknown notebook" }));
+    return send(status === 0 ? 502 : status, "application/json", JSON.stringify({ error: "notebook lookup failed" }));
   }
 
   // static dashboard
