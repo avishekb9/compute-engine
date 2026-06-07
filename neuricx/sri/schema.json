@@ -1,0 +1,17 @@
+[
+  {"name": "date", "type": "DATE", "mode": "REQUIRED"},
+  {"name": "sri", "type": "FLOAT", "mode": "REQUIRED"},
+  {"name": "sri_total", "type": "FLOAT", "mode": "NULLABLE"},
+  {"name": "window", "type": "INTEGER", "mode": "NULLABLE"},
+  {"name": "k", "type": "INTEGER", "mode": "NULLABLE"},
+  {"name": "lag", "type": "INTEGER", "mode": "NULLABLE"},
+  {"name": "n_markets", "type": "INTEGER", "mode": "NULLABLE"},
+  {"name": "n_pairs", "type": "INTEGER", "mode": "NULLABLE"},
+  {"name": "top_edges", "type": "RECORD", "mode": "REPEATED", "fields": [
+    {"name": "from", "type": "STRING"},
+    {"name": "to", "type": "STRING"},
+    {"name": "te", "type": "FLOAT"}
+  ]},
+  {"name": "computed_at", "type": "TIMESTAMP", "mode": "NULLABLE"},
+  {"name": "engine_revision", "type": "STRING", "mode": "NULLABLE"}
+]

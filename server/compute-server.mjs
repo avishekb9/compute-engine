@@ -299,6 +299,17 @@ const METHODS = {
     paper: null, deprecated: false,
     changelog: [{ version: "1.0.0", note: "k/lag sensitivity sweep of the KSG-TE point estimator (Tier G.3 diagnostic); reuses ksg_te's validated estimator verbatim; async-only" }],
   },
+  sri_daily: {
+    runner: "r", script: "sri_daily.R",
+    label: "Systemic Risk Index — daily (KSG-TE network connectivity)",
+    category: "Contagion · Systemic Risk",
+    desc: "Daily systemic-risk index = the MEAN KSG/Frenzel-Pompe transfer entropy across all directed pairs over the most-recent rolling window of the g20 panel (the SAME validated estimator as ksg_te, no surrogates → fast). A system-wide nonlinear information-flow / contagion-intensity proxy (higher = more interconnected = more systemic risk). A CONNECTIVITY index — distinct from the MCPFM validation SRI (the AUC=0.915 crisis-discrimination construct); the two are not conflated. Powers the Phase-30 Systemic Risk Observatory (/api/sri/*).",
+    params: { series: { type: "series", n: [2, 18], optional: true }, window: { type: "int", optional: true }, k: { type: "int", optional: true }, lag: { type: "int", optional: true }, asof: { type: "string", optional: true } },
+    version: "1.0.0", capability: "contagion", primitives: ["P3"], long_running: false, min_obs: 60,
+    returns: ["method", "dataset", "date", "window", "k", "lag", "n_markets", "n_pairs", "sri", "sri_total", "top_edges", "runtime_s", "interpretation"],
+    paper: null, deprecated: false,
+    changelog: [{ version: "1.0.0", note: "daily KSG-TE-network connectivity SRI (Vision Phase 30); reuses ksg_te's validated point estimator over a rolling window" }],
+  },
 };
 
 // ── panel registry (Tier C.1) ─────────────────────────────────────────────────
@@ -1316,6 +1327,37 @@ const server = createServer(async (req, res) => {
       }
     });
     return;
+  }
+
+  // ── Phase 30: Systemic Risk Observatory (public, read-only, graceful-degrade) ──
+  // All read BigQuery systemic_risk.daily via _bqQuery; degrade to {status:"unavailable"}
+  // on any error/empty (never 500). Populated by the sri_daily method + the sri-daily job.
+  const SRI_TBL = "`" + BQ_PROJECT + ".systemic_risk.daily`";
+  if (u.pathname === "/api/sri/current" && req.method === "GET") {
+    const r = await _bqQuery("SELECT date, sri, sri_total, window, k, lag, n_markets, n_pairs, top_edges, computed_at, engine_revision FROM " + SRI_TBL + " ORDER BY date DESC LIMIT 1", []);
+    if (!r.ok || !r.rows || !r.rows.length) return send(200, "application/json", JSON.stringify({ status: "unavailable", reason: (r.error || "no SRI points yet") }));
+    const row = r.rows[0];
+    return send(200, "application/json", JSON.stringify({ status: "ok", date: row.date, sri: row.sri, sri_total: row.sri_total, window: row.window, k: row.k, lag: row.lag, n_markets: row.n_markets, n_pairs: row.n_pairs, top_edges: row.top_edges || [], computed_at: row.computed_at, engine_revision: row.engine_revision }));
+  }
+  if (u.pathname === "/api/sri/history" && req.method === "GET") {
+    const start = (u.searchParams.get("start") || "").slice(0, 10);
+    const end = (u.searchParams.get("end") || "").slice(0, 10);
+    const params = []; let where = "";
+    if (/^\d{4}-\d{2}-\d{2}$/.test(start)) { where += " AND date >= @start"; params.push({ name: "start", parameterType: { type: "DATE" }, parameterValue: { value: start } }); }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(end)) { where += " AND date <= @end"; params.push({ name: "end", parameterType: { type: "DATE" }, parameterValue: { value: end } }); }
+    const r = await _bqQuery("SELECT date, sri FROM " + SRI_TBL + " WHERE TRUE" + where + " ORDER BY date ASC LIMIT 1000", params);
+    if (!r.ok) return send(200, "application/json", JSON.stringify({ status: "unavailable", reason: r.error, series: [] }));
+    return send(200, "application/json", JSON.stringify({ status: "ok", series: (r.rows || []).map(x => ({ date: x.date, sri: x.sri })) }));
+  }
+  if (u.pathname === "/api/sri/network" && req.method === "GET") {
+    const date = (u.searchParams.get("date") || "").slice(0, 10);
+    let sql, params = [];
+    if (/^\d{4}-\d{2}-\d{2}$/.test(date)) { sql = "SELECT date, sri, top_edges FROM " + SRI_TBL + " WHERE date = @date LIMIT 1"; params.push({ name: "date", parameterType: { type: "DATE" }, parameterValue: { value: date } }); }
+    else { sql = "SELECT date, sri, top_edges FROM " + SRI_TBL + " ORDER BY date DESC LIMIT 1"; }
+    const r = await _bqQuery(sql, params);
+    if (!r.ok || !r.rows || !r.rows.length) return send(200, "application/json", JSON.stringify({ status: "unavailable", reason: (r.error || "no SRI point for that date") }));
+    const row = r.rows[0];
+    return send(200, "application/json", JSON.stringify({ status: "ok", date: row.date, sri: row.sri, edges: row.top_edges || [] }));
   }
 
   // ── public job permalink: GET /api/jobs/:id → mirrored GCS record (read-only) ──
