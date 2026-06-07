@@ -1334,7 +1334,7 @@ const server = createServer(async (req, res) => {
   // on any error/empty (never 500). Populated by the sri_daily method + the sri-daily job.
   const SRI_TBL = "`" + BQ_PROJECT + ".systemic_risk.daily`";
   if (u.pathname === "/api/sri/current" && req.method === "GET") {
-    const r = await _bqQuery("SELECT date, sri, sri_total, window, k, lag, n_markets, n_pairs, top_edges, computed_at, engine_revision FROM " + SRI_TBL + " ORDER BY date DESC LIMIT 1", []);
+    const r = await _bqQuery("SELECT date, sri, sri_total, `window`, k, lag, n_markets, n_pairs, top_edges, computed_at, engine_revision FROM " + SRI_TBL + " ORDER BY date DESC LIMIT 1", []);
     if (!r.ok || !r.rows || !r.rows.length) return send(200, "application/json", JSON.stringify({ status: "unavailable", reason: (r.error || "no SRI points yet") }));
     const row = r.rows[0];
     return send(200, "application/json", JSON.stringify({ status: "ok", date: row.date, sri: row.sri, sri_total: row.sri_total, window: row.window, k: row.k, lag: row.lag, n_markets: row.n_markets, n_pairs: row.n_pairs, top_edges: row.top_edges || [], computed_at: row.computed_at, engine_revision: row.engine_revision }));
