@@ -1,0 +1,164 @@
+{
+  "Argentina": {
+    "symbol": "^MERV",
+    "index": "S&P/MERVAL",
+    "date_convention": "utc",
+    "rho": 0.9585,
+    "n_overlap": 187,
+    "flag": "ok_vintage",
+    "latest_yahoo": "2026-06-05"
+  },
+  "Australia": {
+    "symbol": "^AXJO",
+    "index": "S&P/ASX 200",
+    "date_convention": "utc",
+    "rho": 0.9877,
+    "n_overlap": 176,
+    "flag": "clean",
+    "latest_yahoo": "2026-06-05"
+  },
+  "Brazil": {
+    "symbol": "^BVSP",
+    "index": "IBOVESPA",
+    "date_convention": "utc",
+    "rho": 0.9922,
+    "n_overlap": 191,
+    "flag": "clean",
+    "latest_yahoo": "2026-06-05"
+  },
+  "Canada": {
+    "symbol": "^GSPTSE",
+    "index": "S&P/TSX Composite",
+    "date_convention": "utc",
+    "rho": 0.9757,
+    "n_overlap": 190,
+    "flag": "ok_vintage",
+    "latest_yahoo": "2026-06-05"
+  },
+  "China": {
+    "symbol": "000001.SS",
+    "index": "Shanghai Composite",
+    "date_convention": "utc",
+    "rho": 0.9668,
+    "n_overlap": 185,
+    "flag": "ok_vintage",
+    "latest_yahoo": "2026-06-05"
+  },
+  "France": {
+    "symbol": "^FCHI",
+    "index": "CAC 40",
+    "date_convention": "utc",
+    "rho": 0.9855,
+    "n_overlap": 195,
+    "flag": "clean",
+    "latest_yahoo": "2026-06-05"
+  },
+  "Germany": {
+    "symbol": "^GDAXI",
+    "index": "DAX 40",
+    "date_convention": "utc",
+    "rho": 0.9804,
+    "n_overlap": 194,
+    "flag": "clean",
+    "latest_yahoo": "2026-06-05"
+  },
+  "India": {
+    "symbol": "^BSESN",
+    "index": "BSE SENSEX",
+    "date_convention": "utc",
+    "rho": 0.9787,
+    "n_overlap": 188,
+    "flag": "ok_vintage",
+    "latest_yahoo": "2026-06-05"
+  },
+  "Indonesia": {
+    "symbol": "^JKSE",
+    "index": "IDX Composite",
+    "date_convention": "utc",
+    "rho": 0.968,
+    "n_overlap": 186,
+    "flag": "ok_vintage",
+    "latest_yahoo": "2026-06-05"
+  },
+  "Italy": {
+    "symbol": "FTSEMIB.MI",
+    "index": "FTSE MIB",
+    "date_convention": "utc",
+    "rho": 0.9825,
+    "n_overlap": 193,
+    "flag": "clean",
+    "latest_yahoo": "2026-06-05"
+  },
+  "Japan": {
+    "symbol": "^N225",
+    "index": "Nikkei 225",
+    "date_convention": "utc",
+    "rho": 0.9513,
+    "n_overlap": 187,
+    "flag": "ok_vintage",
+    "latest_yahoo": "2026-06-05"
+  },
+  "Mexico": {
+    "symbol": "^MXX",
+    "index": "S&P/BMV IPC",
+    "date_convention": "utc",
+    "rho": 0.9744,
+    "n_overlap": 192,
+    "flag": "ok_vintage",
+    "latest_yahoo": "2026-06-05"
+  },
+  "Russia": {
+    "symbol": null,
+    "index": "IMOEX",
+    "date_convention": "utc",
+    "rho": null,
+    "n_overlap": 0,
+    "flag": "NaN_no_data",
+    "latest_yahoo": null
+  },
+  "SouthAfrica": {
+    "symbol": "^JN0U.JO",
+    "index": "JSE All Share",
+    "date_convention": "utc",
+    "rho": 0.9576,
+    "n_overlap": 192,
+    "flag": "ok_vintage",
+    "latest_yahoo": "2026-06-05"
+  },
+  "SouthKorea": {
+    "symbol": "^KS11",
+    "index": "KOSPI",
+    "date_convention": "utc",
+    "rho": 0.9599,
+    "n_overlap": 185,
+    "flag": "ok_vintage",
+    "latest_yahoo": "2026-06-05"
+  },
+  "Turkey": {
+    "symbol": "XU100.IS",
+    "index": "BIST 100",
+    "date_convention": "utc",
+    "rho": 0.9826,
+    "n_overlap": 192,
+    "flag": "clean",
+    "latest_yahoo": "2026-06-05"
+  },
+  "UK": {
+    "symbol": "^FTSE",
+    "index": "FTSE 100",
+    "date_convention": "utc",
+    "rho": 0.9879,
+    "n_overlap": 194,
+    "flag": "clean",
+    "latest_yahoo": "2026-06-05"
+  },
+  "USA": {
+    "symbol": "^GSPC",
+    "index": "S&P 500",
+    "date_convention": "utc",
+    "rho": 0.9699,
+    "n_overlap": 189,
+    "flag": "ok_vintage",
+    "latest_yahoo": "2026-06-05"
+  }
+}

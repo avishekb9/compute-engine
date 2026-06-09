@@ -35,7 +35,7 @@ fi
 
 BUILD="$(mktemp -d)"
 trap 'rm -rf "$BUILD"' EXIT
-cp -r "$ENGINE/server" "$ENGINE/r" "$ENGINE/web" "$ENGINE/py" "$BUILD/"
+cp -r "$ENGINE/server" "$ENGINE/r" "$ENGINE/web" "$ENGINE/py" "$ENGINE/neuricx" "$BUILD/"
 cp "$HERE/Dockerfile" "$BUILD/Dockerfile"
 cp "$SOCHPKG" "$BUILD/sochcontagion_0.1.0.tar.gz"
 cp "$CCPKG" "$BUILD/contagionchannels_0.1.3.tar.gz"

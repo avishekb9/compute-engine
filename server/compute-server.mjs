@@ -292,7 +292,7 @@ const METHODS = {
     runner: "r", script: "ksg_robustness.R",
     label: "KSG Transfer Entropy — k/lag Robustness (async diagnostic)",
     category: "Contagion · Information Flow (diagnostic)",
-    desc: "Sensitivity sweep of the KSG transfer-entropy result over a grid of the neighbour count k and history length lag. Reuses the SAME validated KSG/Frenzel-Pompe point estimator as ksg_te (no surrogates → fast per grid point) and reports how stable the directed-TE magnitudes and rankings are: Spearman rank correlation of the full directed-TE vector vs the (k=4,lag=1) baseline, top-10 directed-edge Jaccard overlap, and the rank of the baseline's #1 edge at every grid point. Checks TE magnitude/ranking stability across (k,lag), NOT significance-count stability (which would need surrogates at each grid point). Heavy on the full 18-market grid (k×lag × all directed pairs) — runs ONLY as a background job via /api/jobs/submit; discoverable here but rejected by the sync /api/compute/run endpoint.",
+    desc: "Sensitivity sweep of the KSG transfer-entropy result over a grid of the neighbour count k and history length lag. Reuses the SAME validated KSG/Frenzel-Pompe point estimator as ksg_te (no surrogates → fast per grid point) and reports how stable the directed-TE magnitudes and rankings are: Spearman rank correlation of the full directed-TE vector vs the (k=4,lag=1) baseline, top-10 directed-edge Jaccard overlap, and the rank of the baseline's #1 edge at every grid point. Checks TE magnitude/ranking stability across (k,lag), NOT significance-count stability (which would need surrogates at each grid point). Heavy on the full 18-market grid (k×lag × all directed pairs) — runs ONLY as a background job via /api/jobs/submit; discoverable here but rejected by the sync /api/compute/run endpoint. BADGE MODE (Phase 31, opt-in via param target=[from,to]): adds the WINDOW and ALPHA axes with IAAFT surrogates at each grid point to grade ONE directed edge's significance-robustness, returning pass_rate + a robust|conditional|fragile|untested badge (the significance-count stability this base sweep omits); written to robustness.badges by the orchestrator.",
     params: { series: { type: "series", n: [2, 18], optional: true }, k_grid: { type: "int_array", optional: true }, lag_grid: { type: "int_array", optional: true }, max_pairs: { type: "int", optional: true } },
     version: "1.0.0", capability: "contagion", primitives: ["P3", "P4"], long_running: true, min_obs: 200,
     returns: ["method", "dataset", "k_grid", "lag_grid", "n_series", "n_obs", "n_pairs", "baseline", "grid", "stability", "runtime_s", "interpretation"],
@@ -487,6 +487,15 @@ function provenance(method, spec, clean) {
       : (panel ? panel.label : ds),
     timestamp: new Date().toISOString(),
     permalink: permalink(method, clean),
+    // Phase 31 / Pathway C — robustness norm. Graded headline results (e.g. the
+    // KSG USA->Japan edge, SOCH-B shape symmetry) carry a robust|conditional|
+    // fragile|untested badge + pass_rate in BigQuery robustness.badges, computed
+    // by the async grid jobs and written by this trusted orchestrator. The stamp
+    // references that table rather than recomputing per call; query by result_id.
+    robustness: {
+      badge_table: "hopeful-flash-485308-v3.robustness.badges",
+      note: "Phase 31 robustness badges for graded headline results — query robustness.badges by result_id",
+    },
   };
 }
 
@@ -584,6 +593,70 @@ async function buildArgsJson(method, clean) {
   if (!method.fetch) return JSON.stringify(clean);
   const { series, resolved, source } = await fetchSeries(clean.symbol, clean.source);
   return JSON.stringify({ ...clean, levels: series, symbol: resolved, source });
+}
+
+// ── Phase 30.B: live SRI feed (Yahoo → panels.g20_returns → sri_daily → systemic_risk.daily) ──
+// Net-isolation preserved: this trusted Node layer fetches Yahoo + reads/writes BigQuery; the
+// R sandbox only ever sees an injected panel via panel_inline (never the network).
+const SRI_COLS = ["Argentina","Australia","Brazil","Canada","China","France","Germany","India","Indonesia","Italy","Japan","Mexico","Russia","SouthAfrica","SouthKorea","Turkey","UK","USA"];
+let _tickerMap = null;
+function tickerMap() {
+  if (_tickerMap) return _tickerMap;
+  try { _tickerMap = JSON.parse(readFileSync(join(ENGINE_DIR, "neuricx/sri/ticker_map.json"), "utf8")); } catch { _tickerMap = {}; }
+  return _tickerMap;
+}
+// Yahoo daily closes keyed by the bar's UTC date (the validated panel convention). Map<iso,close>.
+async function fetchYahooDated(sym, range = "3mo") {
+  const { status, body } = await httpGet(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=${range}`);
+  if (status !== 200) throw new Error(`Yahoo HTTP ${status} for ${sym}`);
+  const j = JSON.parse(body); const r = j?.chart?.result?.[0];
+  if (!r || !r.timestamp) throw new Error(`Yahoo no data for ${sym}`);
+  const ts = r.timestamp, cl = r.indicators?.quote?.[0]?.close || [], m = new Map();
+  for (let i = 0; i < ts.length; i++) if (Number.isFinite(cl[i])) m.set(new Date(ts[i] * 1000).toISOString().slice(0, 10), cl[i]);
+  return m;
+}
+// New panel rows (UTC-date log-returns on the S&P trading-day grid, forward-filled, Russia=null)
+// for trading dates strictly after lastDateIso. Returns [{date, Argentina..USA}] ascending.
+async function buildNewPanelRows(lastDateIso) {
+  const tm = tickerMap(), px = {};
+  for (const c of SRI_COLS) {
+    const sym = tm[c] && tm[c].symbol;
+    if (!sym) { px[c] = null; continue; }              // Russia (no Yahoo source) -> null
+    try { px[c] = await fetchYahooDated(sym); } catch { px[c] = new Map(); }
+  }
+  const usa = px["USA"] || new Map();
+  const grid = [...usa.keys()].filter(d => d > lastDateIso).sort();   // S&P trading days after last
+  if (!grid.length) return [];
+  const ffill = (m, D) => { if (!m) return null; let bd = null, bv = null; for (const [d, v] of m) if (d <= D && (bd === null || d > bd)) { bd = d; bv = v; } return bd ? bv : null; };
+  return grid.map((D, i) => {
+    const Dprev = i === 0 ? lastDateIso : grid[i - 1], row = { date: D };
+    for (const c of SRI_COLS) {
+      if (!px[c]) { row[c] = null; continue; }
+      const cD = ffill(px[c], D), cP = ffill(px[c], Dprev);
+      row[c] = (cD && cP && cD > 0 && cP > 0) ? Math.log(cD / cP) : null;
+    }
+    return row;
+  });
+}
+// BigQuery streaming insert via the kernel SA (metadataToken). rows = array of flat objects.
+async function bqInsertAll(dataset, table, rows) {
+  const tok = await metadataToken();
+  if (!tok) return { ok: false, error: "no metadata token" };
+  const payload = Buffer.from(JSON.stringify({ rows: rows.map(r => ({ json: r })), skipInvalidRows: false }));
+  const u = new URL(`https://bigquery.googleapis.com/bigquery/v2/projects/${encodeURIComponent(BQ_PROJECT)}/datasets/${dataset}/tables/${encodeURIComponent(table)}/insertAll`);
+  return await new Promise((resolve) => {
+    const rq = httpsRequest(u, { method: "POST", headers: { "Authorization": `Bearer ${tok}`, "Content-Type": "application/json", "Content-Length": payload.length }, timeout: 20000 }, (r) => {
+      let b = ""; r.on("data", d => (b += d)); r.on("end", () => {
+        if (r.statusCode !== 200) return resolve({ ok: false, error: `insertAll ${r.statusCode}: ${b.slice(0, 200)}` });
+        let j; try { j = JSON.parse(b); } catch { return resolve({ ok: false, error: "insertAll bad JSON" }); }
+        if (j.insertErrors && j.insertErrors.length) return resolve({ ok: false, error: `insertAll rowErrors: ${JSON.stringify(j.insertErrors[0]).slice(0, 220)}` });
+        return resolve({ ok: true });
+      });
+    });
+    rq.on("error", e => resolve({ ok: false, error: `insertAll net: ${e.message}` }));
+    rq.on("timeout", () => { rq.destroy(); resolve({ ok: false, error: "insertAll timeout" }); });
+    rq.write(payload); rq.end();
+  });
 }
 
 // ── sandboxed runner ───────────────────────────────────────────────────────────
@@ -1358,6 +1431,81 @@ const server = createServer(async (req, res) => {
     if (!r.ok || !r.rows || !r.rows.length) return send(200, "application/json", JSON.stringify({ status: "unavailable", reason: (r.error || "no SRI point for that date") }));
     const row = r.rows[0];
     return send(200, "application/json", JSON.stringify({ status: "ok", date: row.date, sri: row.sri, edges: row.top_edges || [] }));
+  }
+
+  // ── Phase 30.B: nightly live tick (scheduler-triggered, idempotent) ──
+  // POST /api/sri/cron-tick : (1) append new Yahoo trading-day rows to panels.g20_returns
+  // (UTC-date log-returns via ticker_map, Russia=NULL), then (2) compute + persist sri_daily
+  // for every panel date that still lacks an SRI point. Date-gated on BOTH tables, so re-runs
+  // are no-ops and a normal night nets +1 point. The R sandbox stays net-isolated: it only
+  // ever sees an injected panel_inline window — never the network. Self-healing: the SRI step
+  // is gated on panel-vs-sri (not on this tick's append), so a streaming-visibility lag or a
+  // transient failure is caught up by the next tick. Always 200 (status: ok|partial|error).
+  if (u.pathname === "/api/sri/cron-tick" && req.method === "POST") {
+    const PANEL_TBL = "`" + BQ_PROJECT + ".panels.g20_returns`";
+    const dry = u.searchParams.get("dry") === "1";   // health-check: do every read + the compute, write NOTHING
+    const out = { status: "ok", dry, appended: 0, sri_points: [], errors: [] };
+    // loud guard: a missing/empty ticker map must NOT masquerade as a market holiday
+    // (both would otherwise yield appended:0). Distinguish config error from no-new-day.
+    if (!tickerMap().USA || !tickerMap().USA.symbol)
+      return send(200, "application/json", JSON.stringify({ status: "error", stage: "ticker-map", reason: "neuricx/sri/ticker_map.json missing or has no USA symbol in this image" }));
+    const tm = tickerMap();
+    const flagged = SRI_COLS.filter(c => tm[c] && tm[c].flag === "ok_vintage");
+    // Compute (NO insert) the sri_daily point for one panel date via a BQ window + the
+    // net-isolated R sandbox (panel_inline only — never the network). {ok,point}|{ok:false,error}.
+    const computeSriForDate = async (D) => {
+      const wq = await _bqQuery("SELECT * FROM " + PANEL_TBL + " WHERE date <= @d ORDER BY date DESC LIMIT 250",
+        [{ name: "d", parameterType: { type: "DATE" }, parameterValue: { value: D } }]);
+      if (!wq.ok || !wq.rows || !wq.rows.length) return { ok: false, error: "window " + (wq.error || "empty") };
+      const win = wq.rows.slice().reverse();   // ascending by date
+      const panel_inline = { dates: win.map(r => r.date), series: Object.fromEntries(SRI_COLS.map(c => [c, win.map(r => (r[c] == null ? null : Number(r[c])))])) };
+      const run = await runSandboxed(METHODS.sri_daily, JSON.stringify({ asof: D, window: 250, k: 4, lag: 1, panel_inline }));
+      if (!run.ok) return { ok: false, error: "sri " + (run.error || "failed") };
+      const o = run.result;
+      return { ok: true, point: { date: o.date, sri: o.sri, sri_total: o.sri_total, window: o.window, k: o.k, lag: o.lag,
+        n_markets: o.n_markets, n_pairs: o.n_pairs, top_edges: o.top_edges || [], computed_at: new Date().toISOString(),
+        engine_revision: "cron-tick", source: "yahoo", date_convention: "utc",
+        excluded_markets: o.excluded_markets || [], flagged_markets: flagged } };
+    };
+    // (1) new panel rows strictly after MAX(panel date)
+    const lr = await _bqQuery("SELECT CAST(MAX(date) AS STRING) AS d FROM " + PANEL_TBL, []);
+    if (!lr.ok || !lr.rows || !lr.rows.length || !lr.rows[0].d)
+      return send(200, "application/json", JSON.stringify({ status: "error", stage: "max-date", reason: (lr.error || "panel empty") }));
+    const lastPanel = lr.rows[0].d;
+    let newRows;
+    try { newRows = await buildNewPanelRows(lastPanel); }
+    catch (e) { return send(200, "application/json", JSON.stringify({ status: "error", stage: "yahoo-fetch", reason: String((e && e.message) || e) })); }
+    if (newRows.length > 10) newRows = newRows.slice(0, 10);   // safety: a tick never deep-backfills
+    if (dry) {
+      // exercise the FULL read+compute path (Yahoo → build → BQ window → sandbox) with no writes
+      out.would_append = newRows.map(r => r.date);
+      const probe = await computeSriForDate(lastPanel);
+      if (probe.ok) out.sri_points.push({ date: probe.point.date, sri: probe.point.sri, n_pairs: probe.point.n_pairs, n_markets: probe.point.n_markets, excluded_markets: probe.point.excluded_markets });
+      else out.errors.push({ date: lastPanel, e: probe.error });
+      if (out.errors.length) out.status = "partial";
+      return send(200, "application/json", JSON.stringify(out));
+    }
+    if (newRows.length) {
+      const ins = await bqInsertAll("panels", "g20_returns", newRows);
+      if (!ins.ok) return send(200, "application/json", JSON.stringify({ status: "error", stage: "panel-insert", reason: ins.error }));
+      out.appended = newRows.length;
+    }
+    // (2) compute + persist SRI for any panel date lacking an SRI point (idempotent, self-healing)
+    const sd = await _bqQuery("SELECT CAST(MAX(date) AS STRING) AS d FROM " + SRI_TBL, []);
+    const lastSri = (sd.ok && sd.rows && sd.rows.length) ? sd.rows[0].d : null;
+    const dq = await _bqQuery(
+      "SELECT CAST(date AS STRING) AS d FROM " + PANEL_TBL + (lastSri ? " WHERE date > @s" : "") + " ORDER BY date ASC LIMIT 10",
+      lastSri ? [{ name: "s", parameterType: { type: "DATE" }, parameterValue: { value: lastSri } }] : []);
+    if (!dq.ok) { out.status = "partial"; out.errors.push({ stage: "sri-dates", reason: dq.error }); return send(200, "application/json", JSON.stringify(out)); }
+    for (const drow of (dq.rows || [])) {
+      const c = await computeSriForDate(drow.d);
+      if (!c.ok) { out.errors.push({ date: drow.d, e: c.error }); continue; }
+      const si = await bqInsertAll("systemic_risk", "daily", [c.point]);
+      if (!si.ok) { out.errors.push({ date: drow.d, e: "sri-insert " + si.error }); continue; }
+      out.sri_points.push({ date: c.point.date, sri: c.point.sri, n_pairs: c.point.n_pairs });
+    }
+    if (out.errors.length) out.status = "partial";
+    return send(200, "application/json", JSON.stringify(out));
   }
 
   // ── public job permalink: GET /api/jobs/:id → mirrored GCS record (read-only) ──

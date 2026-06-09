@@ -51,6 +51,121 @@ if (n < 200L) ce_fail(sprintf("too few complete rows (%d) for KSG-TE robustness"
 
 t0 <- Sys.time()
 
+## ===========================================================================
+## BADGE MODE (Phase 31 / Pathway C): significance-robustness of ONE target edge.
+## Opt-in — triggered by p$target = [from, to]. Adds the two axes the (k,lag)
+## sweep below deliberately omits: sample WINDOW and significance ALPHA (the
+## latter needs IAAFT surrogates at every grid point). Reports a pass_rate + a
+## robust|conditional|fragile|untested badge for the target directed edge,
+## reusing .te/.iaaft from _ksg_core.R verbatim (same validated estimator as
+## ksg_te). Net-isolated: emits JSON only — the BigQuery badge row is written by
+## the trusted orchestrator, never from inside the sandbox.
+## params: {target:[from,to], window_grid?([126,252,504]), embed_grid?([3,6,9]),
+##          k_grid?([3,4,6,8]), alpha_grid?([.01,.05,.10]), n_surrogates?(199)}
+if (!is.null(p$target)) {
+  tg <- as.character(unlist(p$target))
+  if (length(tg) != 2L) ce_fail("badge mode: 'target' must be [from, to]")
+  fi <- match(tg[1], nm); ti <- match(tg[2], nm)
+  if (is.na(fi) || is.na(ti))
+    ce_fail(sprintf("badge mode: target market(s) not in dataset (cols: %s)", paste(nm, collapse = ",")))
+
+  num_grid <- function(x, default) {
+    if (is.null(x)) return(default)
+    v <- suppressWarnings(as.numeric(unlist(x)))
+    if (length(v) == 0L || any(is.na(v))) ce_fail("badge mode: bad numeric grid")
+    unique(v)
+  }
+  win_grid   <- as.integer(num_grid(p$window_grid, c(126, 252, 504)))
+  emb_grid   <- as.integer(num_grid(p$embed_grid,  c(3, 6, 9)))
+  kk_grid    <- as.integer(num_grid(p$k_grid,      c(3, 4, 6, 8)))
+  alpha_grid <- num_grid(p$alpha_grid,             c(0.01, 0.05, 0.10))
+  B <- if (!is.null(p$n_surrogates)) max(19L, as.integer(p$n_surrogates)) else 199L
+
+  ## all directed pairs (for the rank-of-target metric)
+  bpairs <- list(); for (i in seq_len(kk)) for (j in seq_len(kk)) if (i != j) bpairs[[length(bpairs) + 1L]] <- c(i, j)
+  np <- length(bpairs)
+  tgt_idx <- which(vapply(bpairs, function(z) z[1] == fi && z[2] == ti, logical(1)))
+  ncores <- max(1L, parallel::detectCores() - 1L)
+
+  ## baseline anchor — full-sample target TE at the published ksg_te defaults
+  ## (k=4, lag/embed=1): reproduces the headline magnitude (point estimate only,
+  ## no surrogates, so it is cheap). Lets the grid badge be read against the
+  ## headline rather than mistaken for a verdict on the headline itself.
+  base_full_te <- .te(Y[, fi], Y[, ti], 4L, 1L)
+
+  cfgs <- list()
+  for (w in win_grid) for (e in emb_grid) for (kv in kk_grid)
+    cfgs[[length(cfgs) + 1L]] <- c(window = w, embed = e, k = kv)
+  ncfg <- length(cfgs)
+
+  ## one (window,embed,k): observed target TE + IAAFT-surrogate p, plus the target's
+  ## rank among ALL directed pairs (no surrogates) at that config.
+  one_cfg <- function(ci) {
+    w <- cfgs[[ci]]["window"]; e <- cfgs[[ci]]["embed"]; kv <- cfgs[[ci]]["k"]
+    Yw <- utils::tail(Y, w)                              # most-recent w complete obs
+    nu <- nrow(Yw) - e - 1L                              # usable embedded rows
+    if (nu < (kv + e + 5L))
+      return(list(window = w, embed = e, k = kv, te = NA_real_, p = NA_real_,
+                  rank = NA_integer_, n_used = max(0L, nu), estimable = FALSE))
+    te_obs <- .te(Yw[, fi], Yw[, ti], kv, e)
+    surr   <- vapply(seq_len(B), function(b) .te(.iaaft(Yw[, fi]), Yw[, ti], kv, e), numeric(1))
+    pval   <- (1 + sum(surr >= te_obs)) / (B + 1)
+    te_all <- vapply(seq_len(np), function(pp) .te(Yw[, bpairs[[pp]][1]], Yw[, bpairs[[pp]][2]], kv, e), numeric(1))
+    rk     <- match(tgt_idx, order(-te_all))
+    list(window = w, embed = e, k = kv, te = te_obs, p = pval, rank = rk, n_used = nu, estimable = TRUE)
+  }
+  cres <- parallel::mclapply(seq_len(ncfg), one_cfg, mc.cores = ncores, mc.preschedule = FALSE)
+  errs <- vapply(cres, function(z) inherits(z, "try-error") || is.null(z$window), logical(1))
+  if (any(errs)) ce_fail(paste("badge mode failed on", sum(errs), "config(s); first:",
+                               as.character(cres[[which(errs)[1]]])))
+
+  estimable   <- vapply(cres, function(z) isTRUE(z$estimable), logical(1))
+  n_estimable <- sum(estimable); n_skipped <- ncfg - n_estimable
+
+  ## pass_rate over (estimable config x alpha): pass = surrogate p < alpha
+  pass_count <- 0L; total_pts <- 0L
+  for (z in cres[estimable]) for (a in alpha_grid) {
+    total_pts <- total_pts + 1L
+    if (is.finite(z$p) && z$p < a) pass_count <- pass_count + 1L
+  }
+  pass_rate  <- if (total_pts > 0L) pass_count / total_pts else NA_real_
+  rank1_rate <- if (n_estimable > 0L) mean(vapply(cres[estimable], function(z) isTRUE(z$rank == 1L), logical(1))) else NA_real_
+  badge <- if (is.na(pass_rate)) "untested" else if (pass_rate >= 0.90) "robust" else if (pass_rate >= 0.60) "conditional" else "fragile"
+
+  te_vals  <- vapply(cres[estimable], function(z) z$te, numeric(1))
+  grid_out <- lapply(cres, function(z) list(
+    window = z$window, embed = z$embed, k = z$k,
+    te = if (is.finite(z$te)) round(z$te, 6) else NA, p = if (is.finite(z$p)) round(z$p, 4) else NA,
+    rank = z$rank, n_used = z$n_used, estimable = z$estimable))
+
+  runtime <- as.numeric(difftime(Sys.time(), t0, units = "secs"))
+  ce_emit(list(
+    method = "ksg_robustness", mode = "badge",
+    target = list(from = tg[1], to = tg[2]),
+    dataset = if (!is.null(p$dataset)) p$dataset else "g20",
+    grids = list(window = win_grid, embed = emb_grid, k = kk_grid, alpha = alpha_grid),
+    n_surrogates = B, n_configs = ncfg, n_estimable = n_estimable, n_skipped = n_skipped,
+    n_grid_points = total_pts,
+    baseline = list(scope = "full_sample", k = 4L, embed = 1L, n = nrow(Y),
+                    te = round(base_full_te, 6),
+                    note = "published ksg_te-default config (k=4, lag=1); point estimate, anchors the headline magnitude (~0.154)"),
+    pass_rate = if (is.na(pass_rate)) NA else round(pass_rate, 4),
+    rank1_rate = if (is.na(rank1_rate)) NA else round(rank1_rate, 4),
+    badge = badge,
+    te_summary = if (n_estimable > 0L) list(min = round(min(te_vals), 6),
+      median = round(stats::median(te_vals), 6), max = round(max(te_vals), 6)) else NULL,
+    criterion = "pass = IAAFT-surrogate p < alpha at each (window,embed,k,alpha); badge robust>=0.90, conditional>=0.60, else fragile; rank1_rate = fraction of (window,embed,k) where target is the #1 directed edge among all pairs",
+    grid = grid_out,
+    runtime_s = round(runtime, 1),
+    interpretation = sprintf(
+      "KSG-TE significance-robustness badge for %s->%s over window{%s} x embed{%s} x k{%s} x alpha{%s} (%d estimable of %d configs; %d skipped for too-few-obs; B=%d IAAFT surrogates): pass_rate=%.3f -> badge '%s'; target is the #1 directed edge in %.0f%% of estimable configs.",
+      tg[1], tg[2], paste(win_grid, collapse = ","), paste(emb_grid, collapse = ","),
+      paste(kk_grid, collapse = ","), paste(alpha_grid, collapse = ","),
+      n_estimable, ncfg, n_skipped, B, if (is.na(pass_rate)) 0 else pass_rate, badge,
+      if (is.na(rank1_rate)) 0 else 100 * rank1_rate)
+  ))
+}
+
 ## all directed (ordered) pairs i -> j, built ONCE so the TE vector is index-aligned
 ## across every grid point (a prerequisite for the Spearman/Jaccard comparisons).
 pairs <- list()

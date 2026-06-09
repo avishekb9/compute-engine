@@ -13,5 +13,9 @@
     {"name": "te", "type": "FLOAT"}
   ]},
   {"name": "computed_at", "type": "TIMESTAMP", "mode": "NULLABLE"},
-  {"name": "engine_revision", "type": "STRING", "mode": "NULLABLE"}
+  {"name": "engine_revision", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "source", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "date_convention", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "excluded_markets", "type": "STRING", "mode": "REPEATED"},
+  {"name": "flagged_markets", "type": "STRING", "mode": "REPEATED"}
 ]

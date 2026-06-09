@@ -36,7 +36,28 @@ ce_params <- function() {
 }
 
 ## Returns list(dates=Date vector, R=numeric matrix [T x k], cols=names).
+## Phase-30 live path: if p$panel_inline = {dates:[iso...], series:{col:[vals,null...]}}
+## is present, use the injected panel (kept net-isolated: the trusted Node orchestrator /
+## host backfill fetches BigQuery `panels.g20_returns` and injects it) instead of the xlsx.
 ce_returns <- function(p) {
+  if (!is.null(p$panel_inline)) {
+    pin   <- p$panel_inline
+    dates <- as.Date(unlist(pin$dates))
+    nm    <- names(pin$series)
+    col_num <- function(v) { if (is.list(v)) v <- vapply(v, function(x) if (is.null(x)) NA_real_ else as.numeric(x), numeric(1)); as.numeric(v) }
+    mat   <- vapply(nm, function(c) col_num(pin$series[[c]]), numeric(length(dates)))
+    if (is.null(dim(mat))) mat <- matrix(mat, ncol = length(nm))
+    colnames(mat) <- nm; storage.mode(mat) <- "double"
+    ok <- !is.na(dates); dates <- dates[ok]; mat <- mat[ok, , drop = FALSE]
+    o  <- order(dates); dates <- dates[o]; mat <- mat[o, , drop = FALSE]   # ascending by date
+    if (!is.null(p$start)) { kk <- dates >= as.Date(p$start); dates <- dates[kk]; mat <- mat[kk, , drop = FALSE] }
+    if (!is.null(p$end))   { kk <- dates <= as.Date(p$end);   dates <- dates[kk]; mat <- mat[kk, , drop = FALSE] }
+    if (!is.null(p$series)) {
+      miss <- setdiff(p$series, colnames(mat)); if (length(miss)) ce_fail(paste("series not found:", paste(miss, collapse = ", ")))
+      mat <- mat[, p$series, drop = FALSE]
+    }
+    return(list(dates = dates, R = mat, cols = colnames(mat)))
+  }
   ds <- if (!is.null(p$dataset)) p$dataset else "g20"
   if (is.null(DATASETS[[ds]])) ce_fail(paste0("unknown dataset '", ds, "'"))
   d <- suppressMessages(read_excel(DATASETS[[ds]]))

@@ -49,6 +49,7 @@ COPY server ./server
 COPY r ./r
 COPY web ./web
 COPY py ./py
+COPY neuricx ./neuricx
 COPY data-root ./data-root
 
 # COMPUTE_REPO points at the bundled data root so _io.R finds
