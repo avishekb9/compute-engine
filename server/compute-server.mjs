@@ -163,6 +163,30 @@ const METHODS = {
     paper: "arXiv:2604.26546", deprecated: false,
     changelog: [{ version: "1.0.0", note: "Published contagionchannels::run_contagion_pipeline (v0.1.3); reproduces Table 5 channel shares per episode" }],
   },
+  namh_hurst: {
+    runner: "r", script: "namh_hurst.R",
+    label: "NAMH Hurst Panel (published namh)",
+    category: "Long Memory · Network-Adaptive Efficiency (NAMH)",
+    desc: "Rolling-window DFA-ℓ Hurst panel (Peng et al. 1994) via the PUBLISHED namh package (Bhandari & Sahu 2026) — the paper's own estimate_hurst_panel, not a reimplementation. Supplies the NAMH node-weight φ(H)=1−2|H−0.5| (local efficiency). Defaults reproduce the canonical paper-v3 panel on g20_24 (window=252, step=252 non-overlapping, DFA-1): bit-exact to 01_hurst_panel.csv (max|Δ|≈5e-9). Per-series summary by default; runs all 24 series if none given.",
+    dataset: "g20_24",
+    params: { series: { type: "series", n: [1, 24], optional: true }, window: { type: "int", optional: true }, step: { type: "int", optional: true }, order: { type: "int", optional: true }, s_min: { type: "int", optional: true }, n_scales: { type: "int", optional: true } },
+    version: "1.0.0", capability: "long-memory", primitives: ["P1"], long_running: false, min_obs: 252,
+    returns: ["method", "dataset", "config", "n_series", "n_windows", "per_series", "source"],
+    paper: null, deprecated: false,
+    changelog: [{ version: "1.0.0", note: "Published namh::estimate_hurst_panel (v0.1.0); reproduces paper-v3 Hurst panel bit-exact (max|Δ|≈5e-9 vs 01_hurst_panel.csv)" }],
+  },
+  namh_te: {
+    runner: "r", script: "namh_te.R",
+    label: "NAMH Transfer Entropy — raw magnitude (published namh)",
+    category: "Information Flow · Network-Adaptive Efficiency (NAMH)",
+    desc: "Per-window raw KSG transfer-entropy magnitude (Kraskov et al. 2004) for all directed market pairs, via the PUBLISHED namh package (Bhandari & Sahu 2026) — the paper's own te_matrix (Euclidean RANN variant; distinct from the engine's max-norm ksg_te), not a reimplementation. DETERMINISTIC (no surrogates) → reproduce-eligible: te_mean/te_sd match 03_te_summary.csv to ≈5e-9. Effective TE / edge p-values need IAAFT surrogates (unseeded → not bit-reproducible) and are NOT computed here. One window ≈10s — pass window_index for a single window; the full 20-window panel exceeds the sync timeout (job-server territory).",
+    dataset: "g20_24",
+    params: { series: { type: "series", n: [2, 24], optional: true }, window: { type: "int", optional: true }, step: { type: "int", optional: true }, k_nn: { type: "int", optional: true }, lx: { type: "int", optional: true }, ly: { type: "int", optional: true }, window_index: { type: "int", optional: true } },
+    version: "1.0.0", capability: "information-flow", primitives: ["P3"], long_running: false, min_obs: 252,
+    returns: ["method", "dataset", "config", "n_series", "n_windows", "per_window", "note", "source"],
+    paper: null, deprecated: false,
+    changelog: [{ version: "1.0.0", note: "Published namh::te_matrix (v0.1.0); raw KSG TE reproduces 03_te_summary.csv te_mean/te_sd to ≈5e-9" }],
+  },
   vecm: {
     runner: "r", script: "vecm.R",
     label: "Cointegration (Johansen VECM)",
@@ -319,6 +343,18 @@ const METHODS = {
 // file bytes (node:crypto) and cached — see G20_HASH below. `series` (the 18 names)
 // + `n` + `label` are retained for backward compatibility with validate()/provenance().
 const G20_SERIES = ["Argentina","Australia","Brazil","Canada","China","France","Germany","India","Indonesia","Italy","Japan","Mexico","Russia","SouthAfrica","SouthKorea","Turkey","UK","USA"];
+// NAMH 24-series panel (g20_24): 19 equities + 5 commodity futures. Names match the
+// namh package's bundled extdata columns EXACTLY (Korea/SaudiArabia, NOT SouthKorea) —
+// used by validate() to accept series for namh_hurst / namh_te.
+const G20_24_SERIES = ["Argentina","UK","Australia","Brazil","Canada","China","France","Germany","India","Indonesia","Italy","Japan","Korea","Mexico","Russia","SaudiArabia","USA","Turkey","SouthAfrica","Gold","Silver","NaturalGas","CrudeOil","Copper"];
+// Verified sha256 of the namh-bundled g20_24 panel (G20_24_returns_yahoo.rds). The file
+// ships inside the installed namh package (read via system.file at method time), so at
+// boot we best-effort recompute it from the repo copy, else fall back to this constant.
+const G20_24_SHA256 = "b0f93703bbb096f57108098dfd35639f447c4071702753dd598def2d43b64cd1";
+const G20_24_HASH = (() => {
+  try { return createHash("sha256").update(readFileSync(join(REPO, "papers/namh/code/namh-pkg/inst/extdata/G20_24_returns_yahoo.rds"))).digest("hex"); }
+  catch { return G20_24_SHA256; }
+})();
 // Same path _io.R + the runner sandbox use: COMPUTE_REPO || ivy-fineco root.
 const G20_PATH = join(REPO, "papers/contagion-channels/data/G20.xlsx");
 // sha256 of the panel bytes, computed once at boot and cached. Degrades to null
@@ -389,6 +425,26 @@ const DATASETS = {
     source: "contagionchannels package LazyData (g20_returns + channel_proxies + crisis_periods)",
     version: "0.1.3",                   // package version = data vintage
     sha256_hash: CC_PKG_HASH,           // sha256 of contagionchannels_0.1.3.tar.gz
+    access: "public",
+  },
+  // NAMH 24-series panel — daily log-returns 2001–2025 (5085 rows), from the namh
+  // package's bundled extdata (read via system.file in _io.R). 19 G20 equities + 5
+  // commodity futures (Gold/Silver/NaturalGas/CrudeOil/Copper) — a DIFFERENT vintage
+  // and wider universe than `g20` (xlsx, 18 equities, no commodities). Powers the
+  // namh_hurst / namh_te methods (Bhandari & Sahu 2026).
+  g20_24: {
+    id: "g20_24",
+    label: "NAMH 24-series panel (19 equities + 5 commodities, 2001–2025)",
+    description: "NAMH daily log-returns: 19 G20 equity indices + 5 commodity futures (Yahoo/quantmod)",
+    markets: G20_24_SERIES.length,      // 24
+    series: G20_24_SERIES,
+    n: 5085,
+    frequency: "daily",
+    start: "2001-01-03",
+    end: "2025-10-24",
+    source: "namh package bundled extdata (G20_24_returns_yahoo.rds)",
+    version: "0.1.0",                   // namh package version = data vintage
+    sha256_hash: G20_24_HASH,           // sha256 of the bundled rds
     access: "public",
   },
 };

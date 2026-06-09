@@ -11,7 +11,17 @@ options(warn = -1)
 REPO <- Sys.getenv("COMPUTE_REPO", "/home/ecolex/versiondevs/ivy-fineco")
 
 DATASETS <- list(
-  g20 = file.path(REPO, "papers/contagion-channels/data/G20.xlsx")
+  g20    = file.path(REPO, "papers/contagion-channels/data/G20.xlsx"),
+  ## NAMH 24-series panel: 19 equity indices + 5 commodity futures (Gold, Silver,
+  ## NaturalGas, CrudeOil, Copper), daily LOG RETURNS stored as an xts, 2001-01-03 ->
+  ## 2025-10-24 (5085 rows). Source: the `namh` package bundled extdata (Yahoo/quantmod).
+  ## A DIFFERENT vintage from `g20` (xlsx, 18 equities, no commodities) — keep both;
+  ## disambiguate by provenance. Sparse columns (Russia/SouthAfrica/SaudiArabia have many
+  ## NAs) are handled by each method's finite-obs guards, never fabricated.
+  ## Sentinel = the repo copy (exists locally). In the Cloud Run image (COMPUTE_REPO=
+  ## /app/data-root, no papers/ tree) ce_returns falls back to the INSTALLED namh
+  ## package's bundled copy via system.file — both byte-identical (verified 2026-06-09).
+  g20_24 = file.path(REPO, "papers/namh/code/namh-pkg/inst/extdata/G20_24_returns_yahoo.rds")
 )
 
 ce_fail <- function(msg) {
@@ -60,9 +70,25 @@ ce_returns <- function(p) {
   }
   ds <- if (!is.null(p$dataset)) p$dataset else "g20"
   if (is.null(DATASETS[[ds]])) ce_fail(paste0("unknown dataset '", ds, "'"))
-  d <- suppressMessages(read_excel(DATASETS[[ds]]))
-  dates <- as.Date(d[[1]], format = "%d/%m/%Y")
-  mat <- as.matrix(d[, -1, drop = FALSE])
+  path <- DATASETS[[ds]]
+  if (grepl("\\.rds$", path, ignore.case = TRUE)) {
+    ## xts returns matrix (e.g. g20_24): already daily LOG RETURNS, dates in the index.
+    if (!requireNamespace("xts", quietly = TRUE)) ce_fail("xts not installed (required for .rds datasets)")
+    ## image fallback: if the repo copy is absent, read the namh-bundled copy.
+    ## suppressMessages keeps the package's S3-registration notice off stdout.
+    if (!file.exists(path) &&
+        suppressMessages(suppressWarnings(requireNamespace("namh", quietly = TRUE)))) {
+      sf <- system.file("extdata", basename(path), package = "namh")
+      if (nzchar(sf)) path <- sf
+    }
+    obj   <- readRDS(path)
+    dates <- as.Date(zoo::index(obj))
+    mat   <- as.matrix(zoo::coredata(obj))
+  } else {
+    d     <- suppressMessages(read_excel(path))
+    dates <- as.Date(d[[1]], format = "%d/%m/%Y")
+    mat   <- as.matrix(d[, -1, drop = FALSE])
+  }
   storage.mode(mat) <- "double"
   ok <- !is.na(dates)
   dates <- dates[ok]; mat <- mat[ok, , drop = FALSE]

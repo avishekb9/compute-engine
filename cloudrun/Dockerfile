@@ -17,8 +17,8 @@ RUN . /etc/os-release && \
     R -e "options(repos=c(CRAN=paste0('https://packagemanager.posit.co/cran/__linux__/', Sys.getenv('CODENAME','jammy'), '/latest'))); \
           .codename <- '${VERSION_CODENAME}'; \
           options(repos=c(CRAN=paste0('https://packagemanager.posit.co/cran/__linux__/', .codename, '/latest'))); \
-          install.packages(c('jsonlite','readxl','urca','tseries','vars','waveslim','quantreg','plm','lmtest','frequencyConnectedness','igraph','rugarch','rmgarch','xts'))" && \
-    R -e "for (p in c('jsonlite','readxl','urca','tseries','vars','waveslim','quantreg','plm','lmtest','frequencyConnectedness','igraph','rugarch','rmgarch','xts','zoo','MASS')) if(!requireNamespace(p,quietly=TRUE)) stop(paste('MISSING',p))"
+          install.packages(c('jsonlite','readxl','urca','tseries','vars','waveslim','quantreg','plm','lmtest','frequencyConnectedness','igraph','rugarch','rmgarch','xts','RANN','fracdiff'))" && \
+    R -e "for (p in c('jsonlite','readxl','urca','tseries','vars','waveslim','quantreg','plm','lmtest','frequencyConnectedness','igraph','rugarch','rmgarch','xts','zoo','MASS','RANN','fracdiff')) if(!requireNamespace(p,quietly=TRUE)) stop(paste('MISSING',p))"
 
 # Published SOCH package (CRAN-candidate v0.1.0) from the bundled tarball — the
 # soch_profile method runs the paper's own code (Bhandari & Parida 2026), not a
@@ -37,6 +37,18 @@ COPY contagionchannels_0.1.3.tar.gz /tmp/contagionchannels.tar.gz
 RUN R CMD INSTALL /tmp/contagionchannels.tar.gz && \
     R -e "if(!requireNamespace('contagionchannels',quietly=TRUE)) stop('MISSING contagionchannels')" && \
     rm -f /tmp/contagionchannels.tar.gz
+
+# Published NAMH package (v0.1.0, GPL-3) from the bundled tarball — the namh_hurst /
+# namh_te methods run the paper's own code (Bhandari & Sahu 2026): the DFA Hurst panel
+# (Peng et al. 1994) and KSG transfer entropy (Kraskov et al. 2004), not reimplementations.
+# Its bundled extdata (G20_24_returns_yahoo.rds = the g20_24 dataset, 24 series incl.
+# commodities) is read via system.file in _io.R. Deps (xts, zoo, quantreg, igraph,
+# tseries, RANN, fracdiff, Matrix, parallel) are installed above.
+COPY namh_0.1.0.tar.gz /tmp/namh.tar.gz
+RUN R CMD INSTALL /tmp/namh.tar.gz && \
+    R -e "if(!requireNamespace('namh',quietly=TRUE)) stop('MISSING namh')" && \
+    R -e "if(!nzchar(system.file('extdata','G20_24_returns_yahoo.rds',package='namh'))) stop('MISSING g20_24 extdata')" && \
+    rm -f /tmp/namh.tar.gz
 
 # Node 20 (the server is zero-dep ESM; only needs node:http/https/child_process/fs).
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates gnupg && \
