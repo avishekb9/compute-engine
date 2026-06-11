@@ -1288,7 +1288,7 @@ const server = createServer(async (req, res) => {
   }
 
   if (u.pathname === "/health")
-    return send(200, "application/json", JSON.stringify({ ok: true, sandbox: HAVE_BWRAP ? "bwrap" : "timeout", methods: Object.keys(METHODS).length, timeout_s: JOB_TIMEOUT_S }));
+    return send(200, "application/json", JSON.stringify({ ok: true, sandbox: HAVE_BWRAP ? "bwrap" : "timeout", methods: Object.keys(METHODS).length, timeout_s: JOB_TIMEOUT_S, revision: process.env.K_REVISION || "local" }));
 
   if (u.pathname === "/metrics")
     return send(200, "application/json", JSON.stringify(metricsSnapshot()));
@@ -1586,7 +1586,8 @@ const server = createServer(async (req, res) => {
   let p = u.pathname === "/" ? "/index.html" : u.pathname;
   const fp = join(WEB_DIR, p.replace(/\.\.+/g, ""));
   if (existsSync(fp) && fp.startsWith(WEB_DIR)) return send(200, MIME[extname(fp)] || "application/octet-stream", readFileSync(fp));
-  send(404, "text/plain", "not found");
+  // dual-space mandate (OS-P5): every public error is structured JSON, never bare text
+  send(404, "application/json", JSON.stringify({ error: "not found", path: u.pathname }));
 });
 
 // periodic cleanup of expired cache + rate-limit buckets (unref'd: won't hold process open)
