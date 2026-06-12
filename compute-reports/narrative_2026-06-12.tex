@@ -1,0 +1,120 @@
+% narrative_2026-06-12.tex — hand-authored case-study sections for the
+% 2026-06-12 verification run report. Included by gen-compute-report.mjs via
+% --narrative=. Every number below traces to a job id, a git SHA, or a Cloud
+% Run revision named in the text. British spelling; measured register.
+
+\section{The deployment chain}
+This run closed a release cycle that moved the engine's public registry from
+23 to 26 methods. Three registrations landed together: \code{namh\_pipeline}
+(a seeded end-to-end surrogate pipeline run as an asynchronous workstation
+job), \code{namh\_reproduce} (a $\Delta$-verifier that re-runs the published
+NAMH estimators and reports the maximum absolute deviation from the paper's
+archived output), and \code{soch\_robustness} (a badge-mode stability grid
+over the published SOCH-B symmetry test, the subject of
+Section~\ref{sec:case}).
+
+The chain was: engine push (commits \code{37d4337..5d0dc80}, with the
+post-fix commit \code{f1616f2} following), source deploy to Cloud Run
+revision \code{shssm-compute-00033-wq2}, an environment-variable restore to
+revision \code{00034-zqz}, and --- after the driver fix described below --- a
+second deploy arriving at revision \code{shssm-compute-00036-llf}, which this
+report's suite ran against. Two operational details are worth the record.
+First, the deploy script's API-key lookup missed because the repository had
+moved; the documented remedy (an in-place service update, no rebuild)
+restored chat capability in under a minute, and the miss was loudly warned by
+the script itself --- a designed failure surface behaving as designed.
+Second, the suite's single-shot 15-second health probe once recorded a live
+engine as unreachable while all 26 method rows passed against it: the probe
+had raced a Cloud Run cold start. The probe now retries once with a longer
+window; the dead-engine path (a deliberately unreachable URL must produce a
+non-zero exit and honest red rows) still passes.
+
+\section{Case study: a stochastic gate caught by its own evaluation}
+\label{sec:case}
+The most instructive event of the run was a failure. The
+\code{soch\_robustness} row re-runs the published SOCH-B direction-symmetry
+test (the \code{sochcontagion} package's own \code{soch\_test\_symmetry},
+GPL-3 --- the paper's code, not a reimplementation) over a nuisance grid
+$\tau \in \{0.05, 0.10\} \times J \in \{4, 5\}$ on the eight advanced markets
+(28 unordered pairs per configuration, 112 grid points), with a
+200-replication bootstrap null. Its expected band was pre-registered from the
+Phase-31 closure board: the baseline cell ($\tau=0.05$, $J=4$) holds
+$28/28$ pairs --- the paper's ground truth --- with an overall pass rate of
+at least $0.90$.
+
+The first genuine end-to-end execution of this driver returned $27/28$ at
+baseline and an overall pass rate of $0.9821$ ($110/112$), and the row went
+red. Investigation showed the driver carried no random-number-generator pin:
+the bootstrap null's 95th-percentile threshold was stochastic across runs,
+and one near-boundary pair sat close enough to its threshold to flip between
+executions. The Phase-31 grid run had measured $0.9911$ ($111/112$) --- one
+grid point away --- consistent with the same knife edge landing on the other
+side.
+
+The repair followed the engine's existing seeded-determinism precedent
+(\code{namh\_pipeline}): the driver now pins \code{RNGkind("L'Ecuyer-CMRG")}
+with seed 42 \cite{lecuyer1999}, and reports both in its output. The band
+was not touched. A fresh anchor run (job \code{job\_20260612\_fe0c4f06},
+773.5\,s) returned baseline $28/28$, pass rate $0.9911$, badge
+\emph{robust} --- the paper's ground truth and the Phase-31 measurement
+reproduced exactly under the pin. The full suite was then re-run from
+scratch, and its independently submitted job
+(\code{job\_20260612\_c0398d0f}) returned the identical tuple, digit for
+digit: two independent executions now verify determinism end to end. The
+evaluation row was tightened, not widened --- it now requires the exact
+seeded pass rate ($0.9911$), the exact baseline count ($28/28$), and the
+seed itself ($42$) to be echoed in the result.
+
+Three points generalise beyond this engine. First, binary bootstrap-gated
+claims of the form ``the pair holds symmetry'' sit on resampling knife edges
+at modest replication counts; at $B=200$, a single marginal pair is enough to
+move a headline count. A reproducibility statement for such a claim is
+meaningful only with the full tuple --- seed, generator, replication count,
+filter, grid, and market set --- stated. Second, grid resolution bounds the
+interpretability of badge rates: with 112 points, one flip moves the rate by
+$1/112 \approx 0.0089$, so $0.9821$ versus $0.9911$ is a one-point
+difference, not a qualitative change; counts should accompany rates. Third,
+the institutional lesson: the gate that failed was not noise to be routed
+around but the system working --- a pre-registered band over a first-run
+driver surfaced a latent nondeterminism that would otherwise have produced
+intermittent, unexplainable reds in nightly operation.
+
+\section{Formal and epistemic layers}
+Two verification layers beyond the numerical suite are active. The formal
+layer (Lean~4 with mathlib, toolchain v4.30.0) machine-checks the SOCH
+spectral results: 11 of 12 declarations are Lean-accepted, including the
+unconditional closure of the product-Lorentzian spectral density
+proposition ($\Vert H(\omega)\Vert^{2} = S(\omega)$) and an
+existence-and-uniqueness chain for the first-order-condition frequency; one
+declaration (the analytic half of the peak-location lemma) honestly carries
+\code{sorry} and is reported as unproved. The epistemic layer --- a
+provenance-carrying claims ledger with twenty seeded claims spanning
+established, contested, and superseded states --- is built and its public
+read surface is deployed; its data store provisioning remains a gated
+operator action, and until it runs the API degrades honestly, naming the
+missing dataset rather than fabricating an empty success.
+
+\section{Implications}
+For applied work, the run's substantive anchors held without exception:
+the India ADF statistic ($-49.18$), the GARCH persistence ($\alpha + \beta =
+0.991$), the named-panel IPS statistic ($-77.26$ on
+\{India, USA, UK, China, Japan\}), the NAMH transfer-entropy window mean
+($-0.22322165$, inside its pre-registered band), the KSG USA$\to$Japan
+transfer entropy ($0.154$), the KSG robustness Spearman ($0.7282$), the
+GFC trade-channel share ($27.9\%$, arXiv:2604.26546), and the live systemic
+risk index ($0.00849$). The honest negatives also held: the FDR-gated NAMH
+network retains $0/552$ edges and is reported as a degenerate network
+(amber), and the SOCH-C significance test remains not significant
+($p=0.105$) --- both immutable facts of the record, not blemishes to be
+managed. The engine's claim is not that its numbers are impressive but that
+they are traceable: every figure in this report resolves to a job
+identifier, a revision string, or a published artefact, and the pipeline
+that produced this document will produce the next one unattended.
+
+\begin{thebibliography}{9}
+\bibitem[L'Ecuyer(1999)]{lecuyer1999}
+L'Ecuyer, P. (1999).
+Good parameters and implementations for combined multiple recursive random
+number generators.
+\emph{Operations Research}, 47(1), 159--164.
+\end{thebibliography}

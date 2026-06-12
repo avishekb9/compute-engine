@@ -41,4 +41,12 @@ node "$ENGINE_DIR/scripts/claims-refresh.mjs" --apply --evals="$PAGES_DIR/evals.
   && echo "$LOG_PREFIX claims-refresh ok" \
   || echo "$LOG_PREFIX claims-refresh skipped/failed (non-fatal; see above)"
 
+# 5) academic run report (compute-reports/): a LaTeX manuscript generated FROM
+#    tonight's evals.json (verbatim rendering — failures render as loudly as
+#    passes; never recomputes, never invents). Log-only — a LaTeX problem must
+#    not repaint the night; the .tex is always written, the PDF is best-effort.
+node "$ENGINE_DIR/scripts/gen-compute-report.mjs" --evals="$PAGES_DIR/evals.json" \
+  && echo "$LOG_PREFIX compute-report ok" \
+  || echo "$LOG_PREFIX compute-report skipped/failed (non-fatal; see above)"
+
 exit $RC
