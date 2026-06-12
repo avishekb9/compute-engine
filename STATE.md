@@ -54,6 +54,22 @@ is loud about drift. Sessions should read this file before acting on the engine.
   SRI / namh_te live-anchored vs 03_te_summary.csv (|Δ|=6.6e-10). Live surfaces
   re-verified at submission time. Pages push 6290f90 now gates ONLY the paper-v2
   arXiv replacement; keep Cloud Run + Pages up through the review period.
+- 2026-06-12: V4 M2 / Phase 33 — Lean 4 formal closure layer SHIPPED at
+  ivy-fineco/papers/SOCH/lean4/sochlean (Lean v4.30.0 + mathlib v4.30.0 pinned;
+  CI check = `lake build`, green at 8478 jobs). 8/9 declarations machine-checked:
+  prop:spectrum FORMALLY CLOSED (‖H(ω)‖² = S(ω), unconditional Lean theorem);
+  lem:peak scaffolding proved (FOC ⟺ 3x²+(α_s²+α_r²)x−α_s²α_r²=0 in x=ω²;
+  symmetric peak ω*=α/√3; IVT bracket [α_min/√3, α_min]); single-peakedness +
+  uniqueness remains STATED — honest sorry-count 1/9 (a sorry is never reported
+  as proved). Element map: reproduce.html #sochformal strip (page eval 21/21,
+  incl. a page↔Lean-source sorry-count lockstep check) + ivy-fineco
+  ARCHITECTURE.md §C7 row + chronology #49. Pages changes stay UNCOMMITTED with
+  the M1 reproduce wiring — one coherent pages commit lands after the engine
+  deploy + full 26-row suite run (alignment rule). Same day: canonical
+  namh_pipeline tower job job_20260612_0f2f0fd5 SUCCEEDED (B=200, seed 42,
+  1222 s) — te_raw.mean −0.22322165 inside the pre-registered band
+  [−0.2242, −0.2222], FDR 0/552 (honest amber end-to-end), p-value RNG
+  discriminator live; all 5 pre-registered eval-row criteria pass.
 
 ## LEARNING (fail → investigate → verify → distill → consult)
 
