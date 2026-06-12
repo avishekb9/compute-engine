@@ -146,6 +146,17 @@ const METHODS = {
     paper: "arXiv:2606.04113", deprecated: false,
     changelog: [{ version: "1.0.0", note: "Initial registry entry" }],
   },
+  soch_robustness: {
+    runner: "r", script: "soch_robustness.R",
+    label: "SOCH-B Robustness Badge (async; published sochcontagion)",
+    category: "Robustness · Scale-Ordered (SOCH, async)",
+    desc: "Phase-31 badge driver, registered from the deferred set (V4 M1): re-runs the PUBLISHED symmetry test soch_test_symmetry (sochcontagion, the paper's own code) across a (tau × J) nuisance grid on a fixed market group with block-bootstrap nulls. Badge-mode output: pass_rate (the badge confidence WITH its decomposition: per-config holds/n_pairs grid), badge tier (robust ≥0.90 / conditional ≥0.60 / fragile <0.60), and the tau=0.05 baseline anchor (the paper's 28/28 advanced-pair ground truth). This method emits JSON evidence only — BigQuery badge rows are written by the trusted orchestrator, never from the sandbox. Heavy (pairs × grid × bootstrap) — async-only via /api/jobs/submit; rejected by the sync /api/compute/run.",
+    params: { group: { type: "enum", values: ["advanced", "emerging", "all"], optional: true }, tau_grid: { type: "num_array", optional: true }, j_grid: { type: "int_array", optional: true }, n_boot: { type: "int", optional: true }, filter: { type: "enum", values: ["la8", "d4", "la16", "haar"], optional: true } },
+    version: "1.0.0", capability: "robustness", primitives: ["P2", "P3", "P8"], long_running: true, min_obs: 512,
+    returns: ["method", "mode", "target", "group", "grids", "n_grid_points", "baseline", "pass_rate", "badge", "criterion", "source"],
+    paper: "arXiv:2606.04113", deprecated: false,
+    changelog: [{ version: "1.0.0", note: "M1 Step 6: deferred Phase-31 SOCH-B grid driver registered with badge-mode params (num_array tau_grid); async-only" }],
+  },
   channel_attribution: {
     runner: "r", script: "channel_attribution.R",
     label: "Channel Attribution — Table 5 (published contagionchannels)",
@@ -186,6 +197,30 @@ const METHODS = {
     returns: ["method", "dataset", "config", "n_series", "n_windows", "per_window", "note", "source"],
     paper: null, deprecated: false,
     changelog: [{ version: "1.0.0", note: "Published namh::te_matrix (v0.1.0); raw KSG TE reproduces 03_te_summary.csv te_mean/te_sd to ≈5e-9" }],
+  },
+  namh_pipeline: {
+    runner: "r", script: "namh_pipeline.R",
+    label: "NAMH Full Pipeline (async; seeded IAAFT; published namh)",
+    category: "Network · Network-Adaptive Efficiency (NAMH, async)",
+    desc: "End-to-end published NAMH pipeline (namh::run_namh_pipeline v0.1.0, Bhandari & Sahu 2026): rolling DFA-Hurst → KSG TE (Euclidean RANN) → IAAFT effective TE → Benjamini-Hochberg FDR adjacency → Hurst-weighted TE → NAMH fixed point → Leiden communities → centralities. RNG honesty: the package's IAAFT generator is unseeded, so this runner pins RNGkind L'Ecuyer-CMRG + set.seed(seed, default 42) — results are reproducible for a fixed {seed, n_cores} (verified: same seed twice → identical surrogate p-values; different seed → different). Gate honesty (D1): the paper's own FDR gate is the only gate exposed — at the canonical config it retains 0/552 directed edges in every window, so downstream network surfaces are degenerate by construction and reported as measured. ~552 pairs × (1+n_surrogates) KSG estimates per window (≈24 min at B=200) — async-only via /api/jobs/submit; rejected by the sync /api/compute/run.",
+    dataset: "g20_24",
+    params: { window: { type: "int", optional: true }, step: { type: "int", optional: true }, k_nn: { type: "int", optional: true }, n_surrogates: { type: "int", optional: true }, fdr_alpha: { type: "num", optional: true }, lambda: { type: "num", optional: true }, seed: { type: "int", optional: true }, n_cores: { type: "int", optional: true }, window_index: { type: "int", optional: true } },
+    version: "1.0.0", capability: "network", primitives: ["P1", "P3", "P4", "P5", "P6"], long_running: true, min_obs: 252,
+    returns: ["method", "dataset", "config", "n_series", "runtime_s", "per_window", "note", "source"],
+    paper: null, deprecated: false,
+    changelog: [{ version: "1.0.0", note: "M1 Step 4: published run_namh_pipeline, seeded (L'Ecuyer-CMRG, default seed 42), paper's-own-FDR-gate honesty; async-only" }],
+  },
+  namh_reproduce: {
+    runner: "r", script: "namh_reproduce.R",
+    label: "NAMH Reproduce — measured live Δ vs the paper's cached panel",
+    category: "Reproducibility · Network-Adaptive Efficiency (NAMH)",
+    desc: "D1 honesty bar, measured: recomputes the deterministic NAMH surfaces through the paper's OWN namh package at the canonical config and diffs cell-by-cell against the paper's cached diagnostics (staged byte-identical in r/namh_ref). Emits per-quantity max|Δ| with its argmax: hurst_panel (every finite H cell, 24×20 windows, vs 01_hurst_panel.csv), te_window (deterministic KSG te_mean/te_sd vs 03_te_summary.csv), and fdr_network — ALWAYS amber: empty under the paper's own BH-FDR gate (0/552 in all 20 windows), pending, never green, never magnitude-dressed. green iff max|Δ| ≤ tol (default 1e-8) with zero finite/NA placement mismatches; a red is information. Measured 2026-06-12: same-machine max|Δ| 5.0e-16 (hurst, 440 cells) and 1.7e-16 (te).",
+    dataset: "g20_24",
+    params: { scope: { type: "enum", values: ["all", "hurst", "te"], optional: true }, window: { type: "int", optional: true }, step: { type: "int", optional: true }, order: { type: "int", optional: true }, s_min: { type: "int", optional: true }, n_scales: { type: "int", optional: true }, k_nn: { type: "int", optional: true }, lx: { type: "int", optional: true }, ly: { type: "int", optional: true }, window_index: { type: "int", optional: true }, tol: { type: "num", optional: true } },
+    version: "1.0.0", capability: "reproducibility", primitives: ["P1", "P3"], long_running: false, min_obs: 252,
+    returns: ["method", "dataset", "quantities", "verdict", "tol", "note", "source"],
+    paper: null, deprecated: false,
+    changelog: [{ version: "1.0.0", note: "M1 Step 5: measured Δ-verifier for the NAMH layer; hurst/te green by measurement, FDR network amber by construction" }],
   },
   vecm: {
     runner: "r", script: "vecm.R",
@@ -483,6 +518,11 @@ function validate(methodId, params) {
       // grid param (e.g. ksg_robustness k_grid/lag_grid): one or more positive integers.
       const arr = (Array.isArray(v) ? v : [v]).map(x => parseInt(x, 10));
       if (!arr.length || arr.some(i => !Number.isFinite(i) || i <= 0)) throw new Error(`'${k}' must be an array of positive integers`);
+      clean[k] = arr;
+    } else if (spec.type === "num_array") {
+      // numeric grid param (e.g. soch_robustness tau_grid): one or more finite numbers.
+      const arr = (Array.isArray(v) ? v : [v]).map(Number);
+      if (!arr.length || arr.some(x => !Number.isFinite(x))) throw new Error(`'${k}' must be an array of finite numbers`);
       clean[k] = arr;
     } else if (spec.type === "num") {
       const x = Number(v);

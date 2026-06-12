@@ -1,0 +1,5 @@
+Reference diagnostics for namh_reproduce.R — byte-identical staged copies of
+papers/namh/output/diagnostics/{01_hurst_panel,03_te_summary,04_fdr_retention}.csv
+(the canonical paper-v3 cached panel, g20_24, window=252/step=252/DFA-1).
+Staged 2026-06-12 so the Cloud Run image (COPY r ./r) carries the reproduce targets.
+Never edit here: re-stage from the diagnostics directory if the paper panel changes.

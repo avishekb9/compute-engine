@@ -14,8 +14,10 @@
 ## STEP=252 (contiguous yearly blocks, verified from the cached date ranges),
 ## order=1, s_min=10, n_scales=20. The package's own defaults (step=21) give
 ## ~231 OVERLAPPING windows, NOT the paper's 20 — do not use them for repro.
-## Reproduction is NOT bit-exact (DFA realisation differences ~1e-2); the honest
-## Delta is reported by namh_reproduce / reproduce.html, never assumed zero.
+## MEASURED reproduction (namh_reproduce, 2026-06-12): max|Δ| 5.0e-16 over 440
+## finite cells same-machine; ≈4.9e-9 live-engine-vs-cache (cross-BLAS). The
+## honest Δ is whatever namh_reproduce measures, never an assumed zero. (The
+## earlier "~1e-2" caution here dated from the step=21 misconfig comparison.)
 ##
 ## params: {dataset?(g20_24), series?[subset], window?(252), step?(252),
 ##          order?(1), s_min?(10), n_scales?(20), audit?(false), panel?(false)}
