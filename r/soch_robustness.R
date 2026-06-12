@@ -16,7 +16,7 @@
 ## orchestrator, never from inside the sandbox.
 ##
 ## params: {dataset?(g20), group?(advanced|emerging|all), tau_grid?([.05,.10]),
-##          j_grid?([4,5]), n_boot?(200), filter?(la8)}
+##          j_grid?([4,5]), n_boot?(200), filter?(la8), seed?(42)}
 source(file.path(dirname(sub("--file=", "", grep("--file=", commandArgs(FALSE), value = TRUE))), "_io.R"))
 suppressMessages(library(sochcontagion))
 
@@ -44,6 +44,15 @@ tau_grid <- num_grid(p$tau_grid, c(0.05, 0.10))
 j_grid   <- as.integer(num_grid(p$j_grid, c(4, 5)))
 B        <- if (!is.null(p$n_boot)) max(50L, as.integer(p$n_boot)) else 200L
 wf       <- if (!is.null(p$filter)) p$filter else "la8"
+seed     <- if (!is.null(p$seed)) as.integer(p$seed) else 42L
+
+## seed pin (namh_pipeline precedent): the bootstrap null q95 is otherwise
+## stochastic and near-boundary pairs flip run-to-run (observed 27<->28 at the
+## baseline cell). L'Ecuyer-CMRG streams flow to the config forks via
+## mc.set.seed; results are reproducible for a FIXED {seed, n_boot, grid,
+## filter, markets} tuple.
+RNGkind("L'Ecuyer-CMRG")
+set.seed(seed)
 
 t0 <- Sys.time()
 configs <- list()
@@ -87,6 +96,7 @@ ce_emit(list(
   dataset = if (!is.null(p$dataset)) p$dataset else "g20",
   group = grp, n_markets = length(markets), markets = markets,
   grids = list(tau = tau_grid, J = j_grid), n_boot = B, filter = wf,
+  seed = seed, rng = "L'Ecuyer-CMRG",
   n_configs = length(configs), n_ok = n_ok,
   n_grid_points = as.integer(total_tests),
   baseline = baseline,
