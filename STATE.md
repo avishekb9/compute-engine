@@ -110,6 +110,19 @@ is loud about drift. Sessions should read this file before acting on the engine.
   versiondevs/.claude/skills/econstellar-eval-discipline/SKILL.md and the
   "Vendored-API names (L10)" block to .../econstellar-verifier/SKILL.md —
   exact texts in this session's final report.
+- 2026-06-12 (continuation): sorry-count FELL 1/9 → 1/12 — Lean uniqueness
+  chain proved first-build (Q_strictMonoOn · foc_omega_unique ·
+  existsUnique_foc_omega): the stationary-point half of lem:peak is now fully
+  machine-checked; the single sorry is the analytic half only (maximiser
+  existence + stationarity, route documented in the file). Lockstep
+  re-verified: #sochformal text, reproduce-page eval 22/22 (new uniqueness
+  check), README, seed claim (16/16, refresh 12/12). NEW
+  evals/loop-integrity.test.mjs 20/20 — the autonomy loop's own wiring is now
+  a failable eval (steps exist · artifact paths agree · claims MAP ⊆ suite
+  rows · no nightly DELETE · gap rule + PI gate intact · install-state
+  honesty). First run was 11/20 red — all 9 extraction failures (m: vs
+  method:, quoted path, DELETE in a comment), calibrated per L4, bands
+  untouched. SRI auto-appended 2026-06-11 = 0.006875 overnight.
 
 ## LEARNING (fail → investigate → verify → distill → consult)
 

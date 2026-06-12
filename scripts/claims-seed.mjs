@@ -194,10 +194,10 @@ export const CLAIMS = [
   },
   {
     claim_id: "soch_spectrum_formally_closed", type: "formal", status: "established",
-    statement: "SOCH prop:spectrum is FORMALLY CLOSED in Lean 4 (mathlib v4.30.0): the squared modulus of the cascade transfer function equals the product-Lorentzian spectrum, ||H(omega)||^2 = S(omega), machine-checked unconditionally. The lem:peak scaffolding is Lean-accepted (FOC <-> 3x^2+(a_s^2+a_r^2)x-a_s^2a_r^2=0 in x=omega^2; symmetric peak omega*=alpha/sqrt(3); IVT bracket [alpha_min/sqrt(3), alpha_min]); lem:peak's single-peakedness + uniqueness remains STATED, NOT proved — honest sorry-count 1 of 9 declarations. A sorry is never reported as a proof.",
+    statement: "SOCH prop:spectrum is FORMALLY CLOSED in Lean 4 (mathlib v4.30.0): the squared modulus of the cascade transfer function equals the product-Lorentzian spectrum, ||H(omega)||^2 = S(omega), machine-checked unconditionally. The lem:peak STATIONARY-POINT half is fully Lean-accepted: FOC <-> 3x^2+(a_s^2+a_r^2)x-a_s^2a_r^2=0 in x=omega^2; symmetric peak omega*=alpha/sqrt(3); and EXACTLY ONE positive FOC frequency exists (Q strictly monotone on [0,inf)), lying in [alpha_min/sqrt(3), alpha_min]. What remains STATED, NOT proved is the analytic half (the maximiser of omega*S exists and satisfies the FOC) — honest sorry-count 1 of 12 declarations. A sorry is never reported as a proof.",
     established_at: D("2026-06-12"), last_verified: D("2026-06-12"), confidence: null,
     conditions: ["CI check: lake build green (8478 jobs) with exactly the 1 declared sorry", "page<->source lockstep: reproduce-page eval greps Spectrum.lean and fails on drift"],
-    counter_conditions: ["lem:peak (full single-peakedness + uniqueness): stated only — the continuing research line"],
+    counter_conditions: ["lem:peak analytic half (maximiser existence + stationarity): stated only — the continuing research line"],
     provenance_ids: ["lean:ivy-fineco/papers/SOCH/lean4/sochlean/Sochlean/Spectrum.lean", "page:reproduce.html#sochformal", "chronology:#49", "eval:evals/reproduce-page.test.mjs (21/21)"],
     paper_refs: ["arXiv:2606.04113"],
   },
