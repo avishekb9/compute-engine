@@ -4,8 +4,10 @@
 // invented — each statement traces to a chronology entry (ivy-fineco
 // ARCHITECTURE.md §C4), a badge row (robustness.badges), a tower job id, a file
 // anchor, or a Lean build. Honest ambers/holes are seeded AS claims about the
-// space's own gaps (invariant 3). The WaveQTE GFC divergence is seeded with
-// status=contested — a real contradiction recorded, not reconciled.
+// space's own gaps (invariant 3). The WaveQTE GFC divergence carries its full
+// lifecycle: contested 2026-06-09→12, then SUPERSEDED by the documented V4-M4
+// disposition (docs/WAVEQTE_FLAG_DISPOSITION.md) — revision history is part of
+// the knowledge, so the superseded row ships, never deleted.
 //
 // usage:
 //   node scripts/claims-seed.mjs --selftest   # schema/provenance validation, no network
@@ -137,12 +139,21 @@ export const CLAIMS = [
     paper_refs: ["arXiv:2604.26546"],
   },
   {
-    claim_id: "waveqte_gfc_channel_split", type: "empirical", status: "contested",
-    statement: "CONTESTED PAIR: the waveqte/ manuscript (working paper, 2026-02-19) reports the FINANCIAL channel dominant in the GFC at 50.0%, while the engine's verified ground truth (published contagionchannels package, Table-5-exact to 0.000pp) gives TRADE dominant at 27.9%. A proxy-vintage / manuscript-version disagreement — recorded, under investigation, NEVER averaged or silently reconciled.",
+    claim_id: "waveqte_gfc_channel_split", type: "empirical", status: "superseded",
+    statement: "SUPERSEDED (was contested 2026-06-09 to 2026-06-12): the waveqte/ working paper (2026-02-19) reports the FINANCIAL channel dominant in the GFC at 50.0%, while the engine's verified ground truth (published contagionchannels package, Table-5-exact to 0.000pp) gives TRADE dominant at 27.9%. Originally flagged as a proxy-vintage disagreement. RESOLVED by the V4-M4 investigation: not proxy vintage — different estimands from different methods on different partitions (activation-scoring intensity, 7 episodes vs structural IV/2SLS shares, 8 sub-periods). See waveqte_gfc_split_resolved.",
     established_at: D("2026-06-09"), last_verified: D("2026-06-12"), confidence: null,
     conditions: ["engine side: Trade-GFC 27.9% via the published CRAN package, Table 5 reproduced 0.000pp"],
     counter_conditions: ["manuscript side: Financial-GFC 50.0% (papers/waveqte/contagion_manuscript.pdf, 2026-02-19 vintage)"],
-    provenance_ids: ["file:papers/waveqte/contagion_manuscript.pdf", "method:channel_attribution", "chronology:#41", "chronology:#46", "flag:V4-M4-disposition-pending"],
+    provenance_ids: ["file:papers/waveqte/contagion_manuscript.pdf", "method:channel_attribution", "chronology:#41", "chronology:#46", "doc:compute-engine/docs/WAVEQTE_FLAG_DISPOSITION.md", "superseded_by:waveqte_gfc_split_resolved"],
+    paper_refs: ["arXiv:2604.26546"],
+  },
+  {
+    claim_id: "waveqte_gfc_split_resolved", type: "methodological", status: "established",
+    statement: "The 50.0%-vs-27.9% GFC channel divergence is RESOLVED as a method + partition divergence, not a contradiction and not proxy vintage: the Feb-2026 working paper measures proxy-ACTIVATION INTENSITY (descriptive; loads on VIX/HY-OAS, mechanically Financial-heavy in a financial crisis) over 7 episodes, while the published arXiv paper estimates STRUCTURAL channel shares under IV/2SLS over 8 sub-periods (GFC* = Aug-2007 to Jun-2009) and ITSELF discloses that the GFC dominant-channel label is identification-dependent. Canonical = arXiv:2604.26546 (newer, submitted, CRAN-implemented, engine-reproduced 0.000pp, bootstrap CIs [26.1, 29.8]); the engine's independent Phase-31 badge corroborates: Trade SHARE rock-stable 25.7-28.7pp, dominant LABEL knife-edge. The 50.0% is reclassified (different estimand), not refuted; nothing averaged or blended.",
+    established_at: D("2026-06-12"), last_verified: D("2026-06-12"), confidence: null,
+    conditions: ["canonical: arXiv:2604.26546 GFC* Trade 27.9% under primary IV/2SLS, read WITH its method-dependence disclosure", "PI may supersede this disposition with a documented reason"],
+    counter_conditions: ["heteroskedasticity-based identification assigns the GFC label to Behavioural (per the paper's own robustness section; also the older paper3.pdf draft vintage)"],
+    provenance_ids: ["doc:compute-engine/docs/WAVEQTE_FLAG_DISPOSITION.md", "file:papers/contagion-channels/manuscripts/paper3_v2/arxiv_submission/main.tex", "file:papers/waveqte/contagion_manuscript.pdf", "badge:robustness.badges/channel_attribution", "chronology:#47"],
     paper_refs: ["arXiv:2604.26546"],
   },
   {
@@ -231,8 +242,9 @@ function selftest() {
   ok(CLAIMS.every(c => (c.provenance_ids || []).length >= 1), "EVERY claim provenanced (no provenance = no claim)");
   ok(CLAIMS.every(c => c.statement && c.statement.length > 40 && !/\n/.test(c.statement)), "statements single-line, substantive");
   ok(CLAIMS.every(c => /^\d{4}-\d{2}-\d{2}T00:00:00Z$/.test(c.established_at)), "established_at date-precision convention");
-  ok(CLAIMS.filter(c => c.status === "contested").every(c => (c.counter_conditions || []).length >= 1), "contested claims carry both sides");
-  ok(CLAIMS.some(c => c.claim_id === "waveqte_gfc_channel_split" && c.status === "contested"), "the real WaveQTE divergence is seeded contested");
+  ok(CLAIMS.filter(c => ["contested", "superseded"].includes(c.status)).every(c => (c.counter_conditions || []).length >= 1), "contested/superseded claims carry both sides");
+  ok(CLAIMS.some(c => c.claim_id === "waveqte_gfc_channel_split" && c.status === "superseded" && c.provenance_ids.some(p => p.startsWith("superseded_by:"))), "the WaveQTE divergence carries its full lifecycle (contested -> superseded, linked)");
+  ok(CLAIMS.some(c => c.claim_id === "waveqte_gfc_split_resolved" && c.status === "established" && c.provenance_ids.some(p => /WAVEQTE_FLAG_DISPOSITION/.test(p))), "the resolution claim traces to the written disposition");
   ok(CLAIMS.some(c => c.type === "hole"), "holes are seeded as claims about the space's gaps");
   ok(CLAIMS.some(c => c.type === "formal"), "the Lean formal layer is a claim");
   ok(CLAIMS.every(c => c.confidence == null || (c.confidence > 0 && c.confidence <= 1)), "confidence is a pass_rate or NULL, never invented");

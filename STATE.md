@@ -87,6 +87,29 @@ is loud about drift. Sessions should read this file before acting on the engine.
   Chrome court blocked in-session (browser navigation denied by permission
   mode) — claims.html + reproduce.html #sochformal need the PI's desktop+mobile
   eyeball; the harness evals (26/26 + 21/21) are the machine record.
+- 2026-06-12: V4 M4 / self-improving loop — (1) WaveQTE 50.0%-vs-27.9% flag
+  RESOLVED with a written disposition (docs/WAVEQTE_FLAG_DISPOSITION.md): a
+  method+partition divergence (Feb-WP activation-scoring intensity / 7 episodes
+  vs published structural IV/2SLS / 8 sub-periods, GFC* Aug-07→Jun-09), NOT
+  proxy vintage; canonical = arXiv:2604.26546 (Trade 27.9% [26.1,29.8], read
+  with its own method-dependence disclosure; the Phase-31 badge independently
+  corroborates share-stable/label-knife-edge); claim seed updated to the full
+  lifecycle (contested→superseded + established resolution claim; seed 16/16).
+  (2) Gap-proposal pipeline scripts/gap-proposals.mjs (7/7 selftests) RAN once
+  end-to-end for real: /metrics read OK (events:{} — true in-memory state),
+  gcloud logging read OK (0 unanswerable asks / 7d), rule >=5/7d → NO proposals
+  — recorded in candidates/RUNLOG.md as a first-class outcome. Never
+  auto-deploys; candidates are PI-review documents. (3) Eval growth law: local
+  registry 26 methods / local suite 26 rows; deployed 23/23 (last full run
+  02:33Z); page harnesses 21/21 + 26/26. Law holds at both layers; the 26/26
+  full run lands post-deploy (alignment rule). (4) K3 process changes adopted:
+  main-module guard on dual-use scripts (L9) + grep-vendored-source-before-
+  writing (L10) — skill distillation PI-gated.
+- PI ACTION pending (two commands, skill distillation of L9/L10): append the
+  "Tooling discipline (L9)" block to
+  versiondevs/.claude/skills/econstellar-eval-discipline/SKILL.md and the
+  "Vendored-API names (L10)" block to .../econstellar-verifier/SKILL.md —
+  exact texts in this session's final report.
 
 ## LEARNING (fail → investigate → verify → distill → consult)
 
@@ -104,3 +127,5 @@ future sessions read the Skill before acting. Distilled rows name their Skill.
 | L6 | 2026-06-08 | distilled | LaTeX source grep is insufficient for count/fact consistency: TikZ figure labels and line-wrapped phrases are invisible to line-based search but visible in the rendered PDF. Verify with `pdftotext file.pdf - \| tr '\n' ' ' \| grep`, ligature-tolerant, across all figures/*.tex. | econstellar-verifier |
 | L7 | 2026-06-12 | distilled | A laptop reboot killed both setsid daemons mid-pipeline; the eval suite survived because it had already written its artifact. Long-lived local services need a reboot-surviving re-arm (cron port-guard), and pipelines should write artifacts as they go, not at the end. | econstellar-engine-ops |
 | L8 | 2026-06-04 | distilled | Bibliography titles are looked up, never reconstructed from codenames: "MCPFM" resolves to a Model Context Protocol title (arXiv:2507.08065), not the codename expansion. Verify id <-> title <-> authors against the registered record before citing. | econstellar-verifier |
+| L9 | 2026-06-12 | verify | A dual-use ESM script (CLI + importable) must guard its CLI dispatch with the main-module check (import.meta.url vs pathToFileURL(argv[1])): claims-refresh imported CLAIMS from claims-seed and the seeder's top-level dispatch ran the WRONG selftest + process.exit'd, masquerading as a pass. Fixed + selftested. Distillation to econstellar-eval-discipline PENDING (skill append classifier-denied; PI one-liner in LEDGER). | pending |
+| L10 | 2026-06-12 | verify | Before writing code against a large vendored dependency, grep the dependency's OWN source for exact symbol names first (mathlib in .lake/packages): the Lean PSD proof compiled FIRST-TRY with zero name-risk iterations because Complex.sq_norm / normSq_add_mul_I / normSq_div were verified from source pre-write. Code-API corollary of L8. Distillation to econstellar-verifier PENDING (same gate). | pending |
