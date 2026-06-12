@@ -46,6 +46,14 @@ is loud about drift. Sessions should read this file before acting on the engine.
 - PI ACTION pending (one command): install the nightly loop in cron. The loop is
   built and self-tested; the harness declined to edit the crontab autonomously.
   Run:  ( crontab -l; echo '10 7 * * * /home/ecolex/engine-work/compute-engine/scripts/nightly-loop.sh >> /tmp/econstellar-nightly.log 2>&1' ) | crontab -
+- 2026-06-12: AHRC proposal SUBMITTED by the PI (supreme gate CLOSED, a month ahead
+  of the 12 July deadline). Submitted artifact = ivy-fineco/proposals/ahrc/template/
+  main.pdf (23 pp), frozen beside it as main_SUBMITTED_2026-06-12.pdf + source
+  tarball, sha256 88806b67d5523c94…; engine facts pinned at submission: 23 methods /
+  rev shssm-compute-00032-c8q / SHAs 37d4337 (engine) + 7bea875 (pages) / 60-point
+  SRI / namh_te live-anchored vs 03_te_summary.csv (|Δ|=6.6e-10). Live surfaces
+  re-verified at submission time. Pages push 6290f90 now gates ONLY the paper-v2
+  arXiv replacement; keep Cloud Run + Pages up through the review period.
 
 ## LEARNING (fail → investigate → verify → distill → consult)
 
