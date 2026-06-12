@@ -70,6 +70,23 @@ is loud about drift. Sessions should read this file before acting on the engine.
   1222 s) — te_raw.mean −0.22322165 inside the pre-registered band
   [−0.2242, −0.2222], FDR 0/552 (honest amber end-to-end), p-value RNG
   discriminator live; all 5 pre-registered eval-row criteria pass.
+- 2026-06-12: V4 M3 / Phase 34 — epistemic claim layer BUILT (commit 1d969b2):
+  epistemic/schema.json + scripts/claims-seed.mjs (19 provenanced claims, 15/15
+  selftests; WaveQTE 50.0%-vs-27.9% seeded CONTESTED with both sides; DML INSERT
+  only, never streaming) + GET /api/claims + /api/claims/:id on the kernel
+  (CORS *, graceful-degrade smoke-verified) + claims.html "What we know" panel
+  (26/26 page evals; contested/superseded visible; degrade fabricates nothing)
+  + scripts/claims-refresh.mjs (12/12; pass→last_verified, red→contested pair
+  via MERGE contests:<id>, NEVER deletes) wired into nightly-loop step 4.
+  PI-GATED (classifier-denied in-session, run in order):
+    (1) cd ~/engine-work/compute-engine && node scripts/claims-seed.mjs --apply
+    (2) bash cloudrun/deploy.sh        # ships /api/claims + the 26-method registry
+    (3) node scripts/claims-refresh.mjs --simulate-contradiction
+        → curl -s "https://shssm-compute-b7ui3oxaqq-el.a.run.app/api/claims?status=contested" | grep ztest
+        → node scripts/claims-refresh.mjs --clean-simulation
+  Chrome court blocked in-session (browser navigation denied by permission
+  mode) — claims.html + reproduce.html #sochformal need the PI's desktop+mobile
+  eyeball; the harness evals (26/26 + 21/21) are the machine record.
 
 ## LEARNING (fail → investigate → verify → distill → consult)
 
