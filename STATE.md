@@ -70,7 +70,7 @@ is loud about drift. Sessions should read this file before acting on the engine.
   1222 s) — te_raw.mean −0.22322165 inside the pre-registered band
   [−0.2242, −0.2222], FDR 0/552 (honest amber end-to-end), p-value RNG
   discriminator live; all 5 pre-registered eval-row criteria pass.
-- 2026-06-12: V4 M3 / Phase 34 — epistemic claim layer BUILT (commit 1d969b2):
+- 2026-06-12: V4 M3 / Phase 34 — epistemic claim layer BUILT (commit 6fab33d (author-fixed)):
   epistemic/schema.json + scripts/claims-seed.mjs (19 provenanced claims, 15/15
   selftests; WaveQTE 50.0%-vs-27.9% seeded CONTESTED with both sides; DML INSERT
   only, never streaming) + GET /api/claims + /api/claims/:id on the kernel
