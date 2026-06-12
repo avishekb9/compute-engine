@@ -9,9 +9,9 @@ is loud about drift. Sessions should read this file before acting on the engine.
 ## MEASURED
 
 <!-- MEASURED:BEGIN (machine-written by scripts/state-refresh.mjs; do not hand-edit) -->
-- refreshed: 2026-06-12T02:09Z
+- refreshed: 2026-06-12T02:33Z
 - engine: rev `shssm-compute-00032-c8q` · methods 23
-- evals: 23/23 pass (0 fail, 0 pending), run 2026-06-11T18:34Z at shssm-compute-00032-c8q
+- evals: 23/23 pass (0 fail, 0 pending), run 2026-06-12T02:33Z at shssm-compute-00032-c8q
 - sri feed: 2026-06-09 SRI 0.007146 (17 markets, 272 pairs)
 - problems: none
 <!-- MEASURED:END -->
@@ -36,6 +36,13 @@ is loud about drift. Sessions should read this file before acting on the engine.
 - Known operational fact: setsid daemons (job-server :3030, studio proxy :3001) die
   on reboot; the nightly loop re-arms the job-server, the proxy is started manually
   by the operator.
+- 2026-06-12: Econstellar system paper v2 COMPLETE at ivy-fineco/papers/econstellar/
+  arxiv_submission_v2/ (v1 frozen, mtimes Jun 4): 29 pp, 2 TikZ figs (incl. the real
+  58-point series), 5 tables, 108-entry bib; built by 6 domain briefs -> writer ->
+  review panel (2 agent reviews + 3 in-loop audits after a session-limit cutoff);
+  30 panel fixes applied; tarball compiles standalone; PRE-SUBMISSION GATE: push
+  pages commit 6290f90 first (paper's URLs table 404s until then). Submission =
+  PI action (arXiv replacement of 2606.05705).
 - PI ACTION pending (one command): install the nightly loop in cron. The loop is
   built and self-tested; the harness declined to edit the crontab autonomously.
   Run:  ( crontab -l; echo '10 7 * * * /home/ecolex/engine-work/compute-engine/scripts/nightly-loop.sh >> /tmp/econstellar-nightly.log 2>&1' ) | crontab -
