@@ -1529,6 +1529,36 @@ const server = createServer(async (req, res) => {
     return send(200, "application/json", JSON.stringify({ status: "ok", date: row.date, sri: row.sri, edges: row.top_edges || [] }));
   }
 
+  // ── Phase 34: epistemic claim layer (public, read-only, graceful-degrade) ──
+  // The space's self-description. Claims are seeded ONLY from verified ground truth
+  // (scripts/claims-seed.mjs — every row provenanced) and refreshed by the nightly
+  // loop (scripts/claims-refresh.mjs). Contested/superseded are visible states:
+  // the history of revision is part of the knowledge. Reads BigQuery
+  // epistemic.claims via _bqQuery; degrades to {status:"unavailable"} — never 500.
+  const CLAIMS_TBL = "`" + BQ_PROJECT + ".epistemic.claims`";
+  const CLAIMS_COLS = "claim_id, type, statement, established_at, last_verified, confidence, conditions, counter_conditions, provenance_ids, paper_refs, status";
+  if (u.pathname === "/api/claims" && req.method === "GET") {
+    const params = []; let where = "";
+    const st = (u.searchParams.get("status") || "").toLowerCase();
+    if (["established", "contested", "superseded"].includes(st)) { where += " AND status = @st"; params.push({ name: "st", parameterType: { type: "STRING" }, parameterValue: { value: st } }); }
+    const ty = (u.searchParams.get("type") || "").toLowerCase();
+    if (/^[a-z_]{1,32}$/.test(ty) && ty) { where += " AND type = @ty"; params.push({ name: "ty", parameterType: { type: "STRING" }, parameterValue: { value: ty } }); }
+    const r = await _bqQuery("SELECT " + CLAIMS_COLS + " FROM " + CLAIMS_TBL + " WHERE TRUE" + where +
+      " ORDER BY IF(status = 'contested', 0, IF(status = 'established', 1, 2)), type, claim_id LIMIT 200", params);
+    if (!r.ok) return send(200, "application/json", JSON.stringify({ status: "unavailable", reason: r.error, claims: [] }));
+    return send(200, "application/json", JSON.stringify({ status: "ok", n: (r.rows || []).length, claims: r.rows || [] }));
+  }
+  {
+    const m = u.pathname.match(/^\/api\/claims\/([A-Za-z0-9_\-]{1,64})$/);
+    if (m && req.method === "GET") {
+      const r = await _bqQuery("SELECT " + CLAIMS_COLS + " FROM " + CLAIMS_TBL + " WHERE claim_id = @id LIMIT 1",
+        [{ name: "id", parameterType: { type: "STRING" }, parameterValue: { value: m[1] } }]);
+      if (!r.ok) return send(200, "application/json", JSON.stringify({ status: "unavailable", reason: r.error }));
+      if (!r.rows || !r.rows.length) return send(404, "application/json", JSON.stringify({ status: "not_found", claim_id: m[1] }));
+      return send(200, "application/json", JSON.stringify({ status: "ok", claim: r.rows[0] }));
+    }
+  }
+
   // ── Phase 30.B: nightly live tick (scheduler-triggered, idempotent) ──
   // POST /api/sri/cron-tick : (1) append new Yahoo trading-day rows to panels.g20_returns
   // (UTC-date log-returns via ticker_map, Russia=NULL), then (2) compute + persist sri_daily

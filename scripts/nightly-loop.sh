@@ -33,4 +33,12 @@ fi
 node "$ENGINE_DIR/scripts/state-refresh.mjs" --evals "$PAGES_DIR/evals.json"
 RC=$?
 echo "$LOG_PREFIX state-refresh exit $RC"
+
+# 4) epistemic claim refresh (Phase 34): pass rows bump last_verified; a red
+#    creates a contested pair (never deletes). Log-only — a BQ outage must not
+#    repaint the night; the suite + state-refresh above are the canary.
+node "$ENGINE_DIR/scripts/claims-refresh.mjs" --apply --evals="$PAGES_DIR/evals.json" \
+  && echo "$LOG_PREFIX claims-refresh ok" \
+  || echo "$LOG_PREFIX claims-refresh skipped/failed (non-fatal; see above)"
+
 exit $RC

@@ -1,0 +1,13 @@
+[
+  { "name": "claim_id",           "type": "STRING",    "mode": "REQUIRED", "description": "stable id, snake_case; unique" },
+  { "name": "type",               "type": "STRING",    "mode": "REQUIRED", "description": "empirical | methodological | formal | robustness | hole" },
+  { "name": "statement",          "type": "STRING",    "mode": "REQUIRED", "description": "the claim, one paragraph, honest wording incl. its own limits" },
+  { "name": "established_at",     "type": "TIMESTAMP", "mode": "REQUIRED", "description": "when the underlying fact was first verified" },
+  { "name": "last_verified",      "type": "TIMESTAMP", "mode": "NULLABLE", "description": "most recent re-verification (nightly loop / badge re-run updates this)" },
+  { "name": "confidence",         "type": "FLOAT",     "mode": "NULLABLE", "description": "badge pass_rate where the claim is badge-derived; NULL otherwise (never invented)" },
+  { "name": "conditions",         "type": "STRING",    "mode": "REPEATED", "description": "conditions under which the claim holds (incl. badge decompositions)" },
+  { "name": "counter_conditions", "type": "STRING",    "mode": "REPEATED", "description": "known conditions that weaken/contradict; contested pairs carry both sides" },
+  { "name": "provenance_ids",     "type": "STRING",    "mode": "REPEATED", "description": "job ids, badge rows, file anchors, chronology entries — every claim traces" },
+  { "name": "paper_refs",         "type": "STRING",    "mode": "REPEATED", "description": "arXiv ids / package refs" },
+  { "name": "status",             "type": "STRING",    "mode": "REQUIRED", "description": "established | contested | superseded (revision history is part of the knowledge)" }
+]
