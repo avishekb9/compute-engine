@@ -110,3 +110,71 @@ managed. The engine's claim is not that its numbers are impressive but that
 they are traceable: every figure in this report resolves to a job
 identifier, a revision string, or a published artefact, and the pipeline
 that produced this document will produce the next one unattended.
+
+\section*{Addendum (2026-06-13): GPU offload of the transfer-entropy search}
+\label{sec:gpu}
+The heaviest asynchronous methods in this run, \code{ksg\_te} and
+\code{ksg\_robustness}, spend their time in an $O(n^2)$ nearest-neighbour
+search under the Chebyshev norm --- the Kraskov--Stoegbauer--Grassberger /
+Frenzel--Pompe transfer-entropy estimator. On the workstation this work had a
+latent failure mode: the drivers hard-coded \code{detectCores()-1} mclapply
+workers and ignored the job's core request, so two concurrent robustness jobs
+forked forty-two workers over twenty-two logical cores with unpinned
+multi-threaded BLAS beneath them, pinned every core at $100\%$, and hung the
+machine mid-pipeline. That oversubscription was first removed at source --- a
+single governed core budget, clamped last by a server-set hard ceiling, on
+every fork site --- which makes the CPU path safe. The complementary step,
+recorded here, is to move the search off the CPU altogether.
+
+The same primitive now runs on the workstation's NVIDIA RTX 3000 Ada GPU
+through \code{numba.cuda}, a path that needed no new installation (the CUDA
+toolkit and \code{numba} were already present). The two methods dispatch to
+the GPU when a CUDA device is visible and fall back to the governed CPU path
+otherwise; a single environment switch forces the CPU path when wanted. The
+bar was the engine's standing reproduce-integrity rule: the GPU must
+\emph{equal} the CPU, not approximate it. The observed transfer entropy --- the
+only quantity the evaluation suite gates --- is held bit-exact. A dedicated
+gate measured a maximum absolute deviation of $7\times10^{-16}$ between the GPU
+and the engine's own CPU estimator (the six-decimal emitted figures identical)
+across embedding lags $\{1,2\}$ and neighbour counts $\{4,5\}$. The gate also
+surfaced a genuine floating-point subtlety worth recording: the engine's
+one-dimensional neighbour count tests membership through the subtraction
+$v-\varepsilon$ rather than $|\Delta|<\varepsilon$, and so admits a boundary
+point that the textbook strict form rejects when $|\Delta|$ rounds to exactly
+$\varepsilon$. The GPU path was made to reproduce the engine's behaviour, not
+the textbook's, because the published figure --- not the cleaner derivation ---
+is the anchor a regression must protect.
+
+Significance is unchanged in distribution. Neither transfer-entropy method
+seeds a generator, so the IAAFT surrogate $p$-value is a non-reproducible draw
+in both the CPU and GPU paths; the surrogate construction was vectorised into a
+batched Fourier transform on the host, and a pair's observed estimate together
+with all ninety-nine of its surrogates now executes as one batched device
+launch, so that the per-launch and transfer overhead is paid once per pair
+rather than once per surrogate.
+
+The test that matters is the workload that hung the machine, re-run on the new
+path: the full eighteen-market panel, all $306$ directed pairs, ninety-nine
+IAAFT surrogates each --- $30{,}600$ neighbour searches. It completed in
+$35.6$ minutes at $100\%$ of a \emph{single} core (peak resident set
+$388$\,MB), against a measured $289$\,s for a twelve-pair slice on the governed
+CPU path across roughly seven cores, which extrapolates to about two hours for
+the full panel: the GPU path is some $3.5\times$ faster while leaving the
+processor --- and the other twenty-one cores --- free for concurrent work. The
+substantive result is unmoved. The headline link, USA$\to$Japan, returns
+transfer entropy $0.154234$ to the digit; $106$ of $306$ directed links are
+significant at $p<0.05$; and the strongest flows are all \emph{into} Japan ---
+from the United States ($0.1542$), Germany ($0.1108$), Canada ($0.1075$) and
+France ($0.1030$) --- recovering the same information-sink structure the CPU
+path reports, now as a by-product of a run that no longer threatens the host.
+
+Two points generalise. First, when a published estimator is ported to a faster
+device, the equivalence test must be written against the estimator's own
+output, including its floating-point boundary conventions, rather than against
+the form in which it is usually written down; the device that is ``more
+correct'' is the wrong device if it moves a number the literature has already
+recorded. Second, massively parallel fan-out belongs on hardware built for it
+--- a GPU's thousands of lanes --- rather than on an unbounded CPU fork that
+competes with every other job on the machine; the same arithmetic that
+saturated twenty-two cores now occupies one core and a few hundred megabytes of
+video memory, and runs faster for it.
