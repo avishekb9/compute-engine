@@ -57,4 +57,14 @@ nice -n 19 node "$ENGINE_DIR/scripts/gen-compute-report.mjs" --evals="$PAGES_DIR
   && echo "$LOG_PREFIX compute-report ok${NARR_FLAG:+ (+narrative ${NARR_DATE})}" \
   || echo "$LOG_PREFIX compute-report skipped/failed (non-fatal; see above)"
 
+# 6) publish the report PDFs to the web checkout's paper gallery: copies each
+#    compute-reports/*.pdf + a first-page thumbnail into $PAGES_DIR/reports/ and
+#    rewrites reports/manifest.json. The gallery on research-engine.html is a
+#    static fetch of that manifest. Pure file copy + thumbnails, nice'd, log-only
+#    and non-fatal (a missing web checkout or pdftoppm is skipped, never thrown);
+#    committing/pushing the web checkout to publish live stays the PI's call.
+nice -n 19 node "$ENGINE_DIR/scripts/publish-reports.mjs" --web-dir="$PAGES_DIR" \
+  && echo "$LOG_PREFIX reports published to gallery" \
+  || echo "$LOG_PREFIX report publish skipped/failed (non-fatal; see above)"
+
 exit $RC
