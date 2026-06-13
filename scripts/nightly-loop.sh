@@ -45,8 +45,16 @@ node "$ENGINE_DIR/scripts/claims-refresh.mjs" --apply --evals="$PAGES_DIR/evals.
 #    tonight's evals.json (verbatim rendering — failures render as loudly as
 #    passes; never recomputes, never invents). Log-only — a LaTeX problem must
 #    not repaint the night; the .tex is always written, the PDF is best-effort.
-node "$ENGINE_DIR/scripts/gen-compute-report.mjs" --evals="$PAGES_DIR/evals.json" \
-  && echo "$LOG_PREFIX compute-report ok" \
+#    Runs nice'd: it is pure render + a single pdflatex, but it must never
+#    contend with a long-running tower job for CPU (the report layer is the one
+#    step that can always yield). If a hand-authored narrative for the run's
+#    date exists (compute-reports/narrative_<YYYY-MM-DD>.tex), include it.
+NARR_DATE="$(node -e 'try{process.stdout.write((JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).run_at||"").slice(0,10))}catch(e){}' "$PAGES_DIR/evals.json" 2>/dev/null)"
+[ -z "$NARR_DATE" ] && NARR_DATE="$(date -u +%F)"
+NARR="$ENGINE_DIR/compute-reports/narrative_${NARR_DATE}.tex"
+NARR_FLAG=""; [ -f "$NARR" ] && NARR_FLAG="--narrative=$NARR"
+nice -n 19 node "$ENGINE_DIR/scripts/gen-compute-report.mjs" --evals="$PAGES_DIR/evals.json" $NARR_FLAG \
+  && echo "$LOG_PREFIX compute-report ok${NARR_FLAG:+ (+narrative ${NARR_DATE})}" \
   || echo "$LOG_PREFIX compute-report skipped/failed (non-fatal; see above)"
 
 exit $RC
