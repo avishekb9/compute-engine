@@ -108,6 +108,66 @@ suppressMessages({ library(FNN); library(parallel) })
   .ksg_cmi(Xt1, Spast, Dpast, k)
 }
 
+## ---------------------------------------------------------------------------
+## GPU offload dispatcher (shared by ksg_te.R and ksg_robustness.R).
+##
+## Sends the directed-pair KSG/Frenzel-Pompe search to gpu/ksg_gpu.py on the
+## NVIDIA RTX 3000 Ada GPU when a CUDA device is present, so the O(n^2) neighbour
+## search that saturated all 22 CPU cores of the Precision 5490 runs on the GPU at
+## ~1 host core instead. The OBSERVED TE it returns is bit-exact to .te() above
+## (verified by gpu/equiv_gate.R: max|d| <= 7e-16, 6-dp emit identical) -- which is
+## the only quantity the eval suite gates -- so defaulting to GPU when available
+## never moves a published number. Significance uses the helper's own IAAFT (the
+## engine seeds NEITHER ksg method, so surrogate p-values are a non-reproducible
+## draw in both the CPU and GPU paths; documented in the helper).
+##
+## Returns a list of per-pair list(from,to,te,p) -- the SAME shape ksg_te.R's
+## one_pair() produces -- with attr "compute_path"="gpu", or NULL on: CE_GPU=0
+## (forced CPU), no CUDA device, a missing/failed helper, or any malformed result.
+## NULL makes the caller fall back to its governed CPU mclapply path, so a box with
+## no GPU (or a broken toolkit) degrades silently and safely.
+ce_ksg_gpu_pairs <- function(Y, pairs, nm, k, lag, B, seed = 0L) {
+  if (identical(Sys.getenv("CE_GPU"), "0")) return(NULL)         # operator forced CPU
+  tryCatch({
+    ff <- grep("--file=", commandArgs(FALSE), value = TRUE)
+    if (!length(ff)) return(NULL)
+    rdir   <- dirname(sub("--file=", "", ff[1]))
+    helper <- normalizePath(file.path(rdir, "..", "gpu", "ksg_gpu.py"), mustWork = TRUE)
+    ## probe: exit 0 iff a CUDA device is usable
+    if (system2("python3", c(shQuote(helper), "--probe"),
+                stdout = FALSE, stderr = FALSE) != 0L) return(NULL)
+    n <- nrow(Y); kk <- ncol(Y)
+    binf  <- tempfile(fileext = ".bin")
+    specf <- tempfile(fileext = ".json")
+    outf  <- tempfile(fileext = ".json")
+    on.exit(unlink(c(binf, specf, outf)), add = TRUE)
+    writeBin(as.double(Y), binf, size = 8)                       # column-major float64
+    spec <- list(n = n, kk = kk, k = as.integer(k), lag = as.integer(lag),
+                 B = as.integer(B), seed = as.integer(seed),
+                 pairs = lapply(pairs, function(pr) c(pr[1] - 1L, pr[2] - 1L)))
+    writeLines(jsonlite::toJSON(spec, auto_unbox = TRUE), specf)
+    st <- system2("python3", c(shQuote(helper), "--spec", shQuote(specf),
+                               "--bin", shQuote(binf), "--out", shQuote(outf)),
+                  stdout = FALSE, stderr = FALSE)               # child stdout discarded: stdout stays pure JSON
+    if (!identical(as.integer(st), 0L) || !file.exists(outf)) return(NULL)
+    res <- jsonlite::fromJSON(outf, simplifyVector = FALSE)
+    if (!isTRUE(res$ok) || is.null(res$pairs) || length(res$pairs) != length(pairs)) return(NULL)
+    lut <- new.env(parent = emptyenv())
+    for (e in res$pairs) assign(paste(e$i, e$j, sep = ","), e, envir = lut)
+    out <- lapply(pairs, function(pr) {
+      key <- paste(pr[1] - 1L, pr[2] - 1L, sep = ",")
+      if (!exists(key, envir = lut, inherits = FALSE)) stop("GPU result missing a pair")
+      e <- get(key, envir = lut, inherits = FALSE)
+      te <- as.numeric(e$te); p <- as.numeric(e$p)
+      if (!is.finite(te)) stop("GPU returned non-finite TE")
+      list(from = nm[pr[1]], to = nm[pr[2]], te = te, p = p)
+    })
+    attr(out, "compute_path") <- "gpu"
+    attr(out, "device") <- if (is.null(res$device)) NA_character_ else as.character(res$device)
+    out
+  }, error = function(e) NULL)
+}
+
 ## IAAFT surrogate of x (Schreiber & Schmitz 1996): alternately impose x's Fourier
 ## amplitude spectrum and x's empirical amplitude distribution until the rank order
 ## stabilises. The final step imposes the amplitude distribution exactly, so the

@@ -74,7 +74,17 @@ one_pair <- function(pi) {
   list(from = nm[i], to = nm[j], te = te_obs, p = pval)
 }
 
-res <- parallel::mclapply(seq_len(total), one_pair, mc.cores = ncores, mc.preschedule = FALSE)
+## GPU offload first: when a CUDA device is present (and CE_GPU != 0) the directed-
+## pair search runs on the GPU, freeing the CPU cores that previously saturated the
+## box; the observed TE is bit-exact to the CPU path (gpu/equiv_gate.R). On no-CUDA
+## or any failure ce_ksg_gpu_pairs() returns NULL and we run the governed CPU
+## mclapply below -- the original path, unchanged, as the safe fallback.
+res <- ce_ksg_gpu_pairs(Y, pairs, nm, k, lag, B)
+compute_path <- if (is.null(res)) "cpu" else "gpu"
+gpu_device <- if (is.null(res)) NA_character_ else attr(res, "device")
+if (is.null(res)) {
+  res <- parallel::mclapply(seq_len(total), one_pair, mc.cores = ncores, mc.preschedule = FALSE)
+}
 ## surface any forked error rather than silently emitting a broken object
 errs <- vapply(res, function(z) inherits(z, "try-error") || is.null(z$te), logical(1))
 if (any(errs)) ce_fail(paste("KSG-TE failed on", sum(errs), "pair(s); first:",
@@ -100,6 +110,8 @@ ce_emit(list(
   k = k, lag = lag, n_surrogates = B,
   n_series = kk, n_obs = n, n_pairs = total,
   n_significant = sum(sig),
+  compute_path = compute_path,
+  gpu_device = gpu_device,
   edges = edges,
   top = top,
   runtime_s = round(runtime, 1),

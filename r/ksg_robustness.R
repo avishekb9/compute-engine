@@ -184,9 +184,18 @@ grid_specs <- list()
 for (lg in lag_grid) for (kv in k_grid) grid_specs[[length(grid_specs) + 1L]] <- c(k = kv, lag = lg)
 n_grid <- length(grid_specs)
 
-## one (k,lag): TE point estimate per directed pair (NO surrogates), parallelised
-## exactly like ksg_te's pair loop. Returns the index-aligned TE vector.
+## one (k,lag): TE point estimate per directed pair (NO surrogates). GPU offload
+## first (B=0 -> observed TE only; bit-exact to .te per gpu/equiv_gate.R, and the
+## ranking/Spearman the eval gates derive only from these point estimates), else the
+## governed CPU mclapply -- parallelised exactly like ksg_te's pair loop. Returns the
+## index-aligned TE vector either way.
+ksg_compute_path <- "cpu"                         # promoted to "gpu" if any grid point offloads
 te_vector <- function(kv, lag) {
+  g <- ce_ksg_gpu_pairs(Y, pairs, nm, kv, lag, 0L)
+  if (!is.null(g)) {
+    ksg_compute_path <<- "gpu"
+    return(vapply(g, function(z) as.numeric(z$te), numeric(1)))
+  }
   one_pair <- function(pi) {
     i <- pairs[[pi]][1]; j <- pairs[[pi]][2]   # i = source, j = target
     .te(Y[, i], Y[, j], kv, lag)
@@ -272,6 +281,7 @@ ce_emit(list(
   dataset = if (!is.null(p$dataset)) p$dataset else "g20",
   k_grid = k_grid, lag_grid = lag_grid,
   n_series = kk, n_obs = n, n_pairs = n_pairs,
+  compute_path = ksg_compute_path,
   baseline = list(k = base_k, lag = base_lag, note = base_note),
   grid = grid_out,
   stability = list(
