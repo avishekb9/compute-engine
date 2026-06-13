@@ -1,0 +1,6 @@
+# LaTeX build intermediates — the .tex (the manuscript source) and .pdf are the
+# artifacts worth keeping; these are regenerated on every compile.
+*.aux
+*.log
+*.out
+*.toc

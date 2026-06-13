@@ -29,9 +29,11 @@ charts.
 | Rolling Connectedness (time-varying Diebold-Yilmaz) | `vars` | — |
 | Quantile VAR (tail dependence) | `quantreg` | — |
 
-> The table above samples the catalog; the live registry now serves **17 methods** in total
-> (see `ARCHITECTURE.md` §A2). The newest four are `soch_profile`, `wavelet_coherence`,
-> `spillover_rolling`, `quantile_var`.
+> The table above samples the catalog; the live registry now serves **26 methods** in total
+> (see `ARCHITECTURE.md` §A2 for the full registry with verified values and pre-registered
+> bands). The most recent additions are the reproduction and formal-verification methods
+> (`namh_reproduce`, `namh_pipeline`, `soch_robustness`), and the transfer-entropy search now
+> offloads to the GPU with a governed CPU fallback (see `ARCHITECTURE.md` §A3–§A4).
 
 ### AI analyst chatbot
 
@@ -91,7 +93,8 @@ compute-engine/
 
 ## Status & roadmap
 
-- **Now:** 17 methods, bwrap sandbox, AI chatbot — all verified on real G20 data.
+- **Now:** 26 methods, bwrap sandbox, AI chatbot, Cloud Run deployment + an async
+  workstation tower with GPU-accelerated transfer entropy — all verified on real G20 data.
 - **Next:** dataset upload; packaged `contagionchannels` / `WaveQTE` estimators;
   VECM, panel-IV, local projections, DSGE (via `gEcon`); deployment;
   optionally a Vertex AI Agent Builder front-end for the chatbot.
