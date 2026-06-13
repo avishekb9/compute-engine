@@ -54,7 +54,7 @@ if (!is.null(p$max_pairs)) {
   if (length(pairs) > mp) pairs <- pairs[seq_len(mp)]
 }
 total <- length(pairs)
-ncores <- max(1L, parallel::detectCores() - 1L)
+ncores <- ce_ncores(p)
 
 ## one directed pair: observed TE + IAAFT-surrogate null + permutation p-value.
 one_pair <- function(pi) {

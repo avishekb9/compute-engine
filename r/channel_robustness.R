@@ -31,7 +31,7 @@ num_grid <- function(x, default) {
 scale_grid <- as.integer(num_grid(p$scale_grid, c(4, 5, 6)))
 tau_grid   <- num_grid(p$tau_grid, c(0.4, 0.5, 0.6))
 eq_grid    <- num_grid(p$eq_grid, c(0.70, 0.75, 0.80))
-n_cores    <- if (!is.null(p$n_cores)) as.integer(p$n_cores) else max(1L, parallel::detectCores() - 4L)
+n_cores    <- ce_ncores(p, 4L)
 if (is.na(n_cores) || n_cores < 1L) n_cores <- 1L
 
 d  <- load_paper_data()

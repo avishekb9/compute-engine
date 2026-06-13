@@ -33,7 +33,7 @@ tau <- if (!is.null(p$tau)) as.numeric(p$tau) else 0.5
 if (!is.finite(tau) || tau <= 0 || tau >= 1) ce_fail("'tau' must be in (0,1)")
 edge_quantile <- if (!is.null(p$edge_quantile)) as.numeric(p$edge_quantile) else 0.75
 if (!is.finite(edge_quantile) || edge_quantile <= 0 || edge_quantile >= 1) ce_fail("'edge_quantile' must be in (0,1)")
-n_cores <- if (!is.null(p$n_cores)) as.integer(p$n_cores) else max(1L, parallel::detectCores() - 2L)
+n_cores <- ce_ncores(p, 2L)
 if (is.na(n_cores) || n_cores < 1L) n_cores <- 1L
 
 ## CRITICAL: ALWAYS run ALL 8 episodes internally — the pipeline computes its

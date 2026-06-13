@@ -23,6 +23,13 @@ const REPO = process.env.COMPUTE_REPO || path.join(ENGINE_DIR, "..");
 const PORT = Number(process.env.JOB_PORT || 3030);
 const HOST = process.env.HOST || "127.0.0.1";
 const MAX_CONCURRENT = Number(process.env.JOB_CONCURRENCY || 2);
+// Per-job core ceiling so MAX_CONCURRENT jobs cannot oversubscribe the box. Each
+// R method reads CE_MAX_CORES via ce_ncores() in r/_io.R and caps its mclapply
+// fan-out to it; two jobs each forking detectCores()-1 (=21 on the 22-thread
+// Precision 5490) is what saturated all cores and hung the machine. Reserve 2
+// threads for the OS + this Node server. Override with CE_MAX_CORES in the env.
+const CORE_BUDGET = Number(process.env.CE_MAX_CORES)
+  || Math.max(1, Math.floor((os.cpus().length - 2) / Math.max(1, MAX_CONCURRENT)));
 const JOB_TTL_MS = 30 * 24 * 3600 * 1000;
 const JOBS_BUCKET = process.env.JOBS_BUCKET || "econstellar-jobs";   // GCS mirror for the public read-front
 const TOKEN_URL = process.env.GCLOUD_TOKEN_URL || "http://localhost:3001/api/gcloud-token";
@@ -145,7 +152,22 @@ function runJob(job) {
   job.progress = { fraction: 0, stage: "starting", elapsed_s: 0 };
   persist(job); notify(job.job_id, "progress", job.progress);
   const args = [path.join(R_DIR, job.method + ".R"), JSON.stringify(job.params || {})];
-  const env = { ...process.env, CE_PROGRESS: "1", COMPUTE_REPO: REPO };
+  // Core governance: cap each method's mclapply fan-out (CE_MAX_CORES) and pin the
+  // numeric libraries to a single thread each, so a forked worker cannot also
+  // spawn detectCores() BLAS threads on top of the fork (the multiplicative
+  // oversubscription that hung the box). Pinning BLAS to one thread additionally
+  // removes a source of non-deterministic floating-point reduction order.
+  const env = {
+    ...process.env,
+    CE_PROGRESS: "1",
+    COMPUTE_REPO: REPO,
+    CE_MAX_CORES: String(CORE_BUDGET),
+    OPENBLAS_NUM_THREADS: "1",
+    OMP_NUM_THREADS: "1",
+    MKL_NUM_THREADS: "1",
+    VECLIB_MAXIMUM_THREADS: "1",
+    NUMEXPR_NUM_THREADS: "1",
+  };
   const child = spawn("Rscript", args, { env, stdio: ["ignore", "pipe", "pipe"] });
   let buf = "", err = "";
   child.stdout.on("data", d => {
@@ -215,7 +237,7 @@ const server = http.createServer((req, res) => {
     return res.end();
   }
   if (p === "/health")
-    return sendJSON(res, 200, { ok: true, service: "job-server", worker: os.hostname(), methods: METHODS.size, running, queued: queue.length });
+    return sendJSON(res, 200, { ok: true, service: "job-server", worker: os.hostname(), methods: METHODS.size, running, queued: queue.length, cpus: os.cpus().length, core_budget: CORE_BUDGET, max_concurrent: MAX_CONCURRENT });
   if (p === "/api/jobs" && req.method === "GET")
     return sendJSON(res, 200, { jobs: [...jobs.values()].map(j => ({ job_id: j.job_id, method: j.method, status: j.status, submitted_at: j.submitted_at })) });
 
@@ -293,4 +315,4 @@ setInterval(() => {
 
 loadAll(); pump();
 server.listen(PORT, HOST, () =>
-  console.log(`[job-server] http://${HOST}:${PORT} methods=${METHODS.size} concurrency=${MAX_CONCURRENT} jobs=${JOBS_DIR}`));
+  console.log(`[job-server] http://${HOST}:${PORT} methods=${METHODS.size} concurrency=${MAX_CONCURRENT} core_budget=${CORE_BUDGET}/${os.cpus().length} jobs=${JOBS_DIR}`));

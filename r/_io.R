@@ -45,6 +45,26 @@ ce_params <- function() {
   tryCatch(fromJSON(a[[1]]), error = function(e) ce_fail(paste("bad params JSON:", e$message)))
 }
 
+## Worker budget for parallel::mclapply. Centralises core governance so no single
+## method can fork detectCores()-1 workers under concurrency -- two concurrent
+## ksg_robustness jobs each forking 21 workers is what drove the Precision 5490 to
+## 22 cores at 100% and hung it. Precedence: a base of detectCores()-reserve, an
+## explicit n_cores param overrides it, and the job server's CE_MAX_CORES is a HARD
+## ceiling clamped last (the server sets it per concurrent slot so N jobs cannot
+## oversubscribe the machine). Always returns >= 1. Result counts are independent
+## of the split for the order-free pair/grid loops that call this, so capping the
+## worker count never changes a number -- it only governs CPU.
+ce_ncores <- function(p = NULL, reserve = 2L) {
+  b <- max(1L, parallel::detectCores() - as.integer(reserve))
+  if (!is.null(p) && !is.null(p$n_cores)) {
+    req <- suppressWarnings(as.integer(p$n_cores))
+    if (!is.na(req) && req >= 1L) b <- req
+  }
+  cap <- suppressWarnings(as.integer(Sys.getenv("CE_MAX_CORES", "")))
+  if (!is.na(cap) && cap >= 1L) b <- min(b, cap)
+  max(1L, b)
+}
+
 ## Returns list(dates=Date vector, R=numeric matrix [T x k], cols=names).
 ## Phase-30 live path: if p$panel_inline = {dates:[iso...], series:{col:[vals,null...]}}
 ## is present, use the injected panel (kept net-isolated: the trusted Node orchestrator /

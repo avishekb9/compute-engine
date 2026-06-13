@@ -53,7 +53,7 @@ if (!is.null(p$max_pairs)) {
   mp <- max(1L, as.integer(p$max_pairs)); if (length(pairs) > mp) pairs <- pairs[seq_len(mp)]
 }
 np     <- length(pairs)
-ncores <- max(1L, parallel::detectCores() - 1L)
+ncores <- ce_ncores(p)
 
 ## TE point estimate per directed pair (NO surrogates), parallelised like ksg_robustness.
 ## Each pair uses ITS OWN complete cases within the window, so a NaN market only voids

@@ -85,7 +85,7 @@ if (!is.null(p$target)) {
   bpairs <- list(); for (i in seq_len(kk)) for (j in seq_len(kk)) if (i != j) bpairs[[length(bpairs) + 1L]] <- c(i, j)
   np <- length(bpairs)
   tgt_idx <- which(vapply(bpairs, function(z) z[1] == fi && z[2] == ti, logical(1)))
-  ncores <- max(1L, parallel::detectCores() - 1L)
+  ncores <- ce_ncores(p)
 
   ## baseline anchor — full-sample target TE at the published ksg_te defaults
   ## (k=4, lag/embed=1): reproduces the headline magnitude (point estimate only,
@@ -175,7 +175,7 @@ if (!is.null(p$max_pairs)) {
   if (length(pairs) > mp) pairs <- pairs[seq_len(mp)]
 }
 n_pairs <- length(pairs)
-ncores  <- max(1L, parallel::detectCores() - 1L)
+ncores  <- ce_ncores(p)
 
 ## ---------------------------------------------------------------------------
 ## Grid: TE point estimates for ALL directed pairs at each (k,lag)

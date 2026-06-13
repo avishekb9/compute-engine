@@ -1,0 +1,22 @@
+{
+  "trial": "ksg_te_gpu",
+  "estimator": "Frenzel-Pompe max-norm KSG conditional-MI (TE), k=4, lag=1",
+  "n_points": 3000,
+  "device": "NVIDIA RTX 3000 Ada Generation Laptop GPU",
+  "compute_capability": "8.9",
+  "vram_used_mib": 151.2,
+  "gpu_equals_cpu_exact": true,
+  "eps_max_abs_diff": 0.0,
+  "count_mismatches": {
+    "n_z": 0,
+    "n_xz": 0,
+    "n_yz": 0
+  },
+  "te_x_to_y": 0.518177,
+  "te_y_to_x": 0.001772,
+  "direction_correct": true,
+  "gpu_seconds": 0.0042,
+  "cpu_seconds": 0.3101,
+  "speedup_cpu_over_gpu": 73.76,
+  "precision": "float64 (IEEE-deterministic; FP64:FP32 perf ratio 1:64 on Ada laptop)"
+}
