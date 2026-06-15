@@ -1,0 +1,482 @@
+\section{The methodological substrate and the method registry}
+\label{sec:substrate}
+
+The engine's claim to be a single substrate, rather than a bag of scripts, rests on
+one observation. The six published frameworks it carries (NAMH, SOCH,
+contagion-channels, WaveQTE, the commodity study, and MCPFM) do not each need a
+private toolchain. They are recombinations of a small number of estimator-level
+operations: measure how a series remembers its own past, split its variance across
+time scales, quantify directed information flow, build a null by surrogate
+construction, partition a network into communities, decompose a system's
+connectedness, attribute a transmitted shock to a structural channel, and validate
+a binary call against a curve. We call these the \emph{eight primitives}. Every one
+of the \textbf{26} registry methods is one or more primitives wired to a dataset,
+and every method ships with a pre-registered, failable test of its own output. The
+registered voice is deliberate: we would rather have twenty-six checked methods than
+fifty asserted ones.
+
+This section names the eight primitives and their mathematical objects
+(\S\ref{sec:primitives}), shows how the registry's six families map onto them
+(\S\ref{sec:registry}), then gives the transfer-entropy estimator in full because it
+is the load-bearing one and the only quantity the GPU path must reproduce bit-for-bit
+(\S\ref{sec:ksg}). We close with the determinism discipline that makes the estimators
+reproducible (\S\ref{sec:determinism}) and the failable-test rule that governs
+catalogue entry (\S\ref{sec:failable}).
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[
+  prim/.style={draw=ceblue, thick, fill=ceblue!10, rounded corners=1pt, align=left,
+    inner sep=3pt, text width=3.0cm, font=\scriptsize, minimum height=6.4mm},
+  fw/.style={draw=ceorange, thick, fill=ceorange!12, rounded corners=1pt, align=center,
+    inner sep=3pt, text width=2.8cm, font=\footnotesize, minimum height=7.5mm},
+  edge/.style={draw=cegrey!50, line width=0.4pt}]
+  \node[prim] (P1) at (0,7.0) {P1\, long memory (DFA/GPH)};
+  \node[prim] (P2) at (0,6.0) {P2\, MODWT wavelets};
+  \node[prim] (P3) at (0,5.0) {P3\, transfer entropy};
+  \node[prim] (P4) at (0,4.0) {P4\, surrogates (IAAFT)};
+  \node[prim] (P5) at (0,3.0) {P5\, community (Leiden)};
+  \node[prim] (P6) at (0,2.0) {P6\, network (DY)};
+  \node[prim] (P7) at (0,1.0) {P7\, channel attrib.\ (IV)};
+  \node[prim] (P8) at (0,0.0) {P8\, ROC / DeLong};
+  \node[fw] (NAMH) at (7.0,6.3) {NAMH};
+  \node[fw] (SOCH) at (7.0,5.1) {SOCH};
+  \node[fw] (CC)   at (7.0,3.9) {contagion-channels};
+  \node[fw] (WQ)   at (7.0,2.7) {WaveQTE};
+  \node[fw] (CM)   at (7.0,1.5) {commodity};
+  \node[fw] (MC)   at (7.0,0.3) {MCPFM};
+  \begin{scope}[on background layer]
+    \foreach \p in {P1,P3,P4,P5,P6} \draw[edge] (\p.east) -- (NAMH.west);
+    \foreach \p in {P2,P3}          \draw[edge] (\p.east) -- (SOCH.west);
+    \foreach \p in {P2,P3,P5,P7}    \draw[edge] (\p.east) -- (CC.west);
+    \foreach \p in {P2,P3,P4}       \draw[edge] (\p.east) -- (WQ.west);
+    \foreach \p in {P3,P5,P6}       \draw[edge] (\p.east) -- (CM.west);
+    \foreach \p in {P2,P6,P8}       \draw[edge] (\p.east) -- (MC.west);
+  \end{scope}
+\end{tikzpicture}
+\caption{The substrate carries the programme. Each published framework (right,
+in orange) composes a subset of the eight estimator-level primitives (left, in
+blue); the same transfer-entropy and network machinery recurs across elements.
+The composition shown is the principal-primitive view; Section~\ref{sec:elements}
+gives each element in full.}
+\label{fig:substrate}
+\end{figure}
+
+\subsection{The eight primitives}
+\label{sec:primitives}
+
+Table~\ref{tab:primitives} names each primitive, the mathematical object it returns,
+its canonical reference, and the registry methods that instantiate it. The primitives
+are estimator-level, not framework-level: a single method (for example
+\method{namh\_pipeline}) composes several, and a single primitive (for example P3) is
+shared across frameworks that otherwise have nothing in common.
+
+\begin{table}[t]
+\centering
+\footnotesize
+\caption{The eight-primitive substrate. Each primitive is an estimator-level
+operation with a fixed mathematical object and a canonical reference; the registry
+methods in the last column instantiate it on a whitelisted dataset.}
+\label{tab:primitives}
+\begin{tabular}{@{}p{2.25cm}p{4.5cm}p{2.7cm}p{4.55cm}@{}}
+\toprule
+\textbf{Primitive} & \textbf{Object computed} & \textbf{Reference} & \textbf{Example methods} \\
+\midrule
+P1 long-memory &
+  Hurst exponent $H$; $\phi(H)=1-2|H-\tfrac12|$ &
+  DFA / GPH / Qu &
+  \method{dfa\_hurst}, \method{namh\_hurst} \\
+P2 multi-scale &
+  MODWT detail variance $\{\sigma^2_{d_j}\}$ &
+  \cite{barunik2018} &
+  \method{wavelet}, \method{wavelet\_coherence} \\
+P3 information flow &
+  directed TE $T_{Y\to X}$ &
+  \cite{schreiber2000,kraskov2004,frenzel2007} &
+  \method{ksg\_te}, \method{namh\_te}, \method{wqte} \\
+P4 surrogate null &
+  IAAFT / permutation null distribution &
+  \cite{schreiber1996} &
+  \method{ksg\_te}, \method{namh\_pipeline} \\
+P5 community &
+  partition / modularity $Q$ &
+  \cite{traag2019} &
+  \method{network}, \method{namh\_pipeline} \\
+P6 connectedness &
+  GFEVD spillover; frequency bands &
+  \cite{diebold2012,diebold2014,barunik2018} &
+  \method{connectedness}, \method{spillover\_rolling} \\
+P7 channel attribution &
+  per-channel share via IV / 2SLS &
+  \cite{bhandari2026contagion} &
+  \method{channel\_attribution} \\
+P8 ROC validation &
+  AUC; DeLong / Hansen test &
+  \cite{bhandari2025mcpfm} &
+  MCPFM out-of-sample call \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{P1 -- long memory.}
+The object is the Hurst exponent $H$, the scaling exponent of detrended fluctuation
+analysis. On the cumulative profile $y_t=\sum_{s\le t}(x_s-\bar x)$ the series is cut
+into log-spaced boxes, each box is detrended by a local polynomial, the
+root-mean-square residual fluctuation $F(n)$ is taken per box length $n$, and $H$ is
+the slope of $\log F(n)$ on $\log n$. The transparent realisation
+(\file{r/dfa\_hurst.R}) implements this directly; the published path
+(\file{r/namh\_hurst.R}) calls \method{namh::estimate\_hurst\_panel}
+\citep{namhpkg} on a rolling window and supplies the NAMH node weight
+$\phi(H)=1-2|H-\tfrac12|$, a local-efficiency score peaking at the random-walk value
+$H=\tfrac12$. We read $H$ on log-returns, which are $I(0)$, never on price levels,
+which are $I(1)$.
+
+\paragraph{P2 -- multi-scale decomposition.}
+The object is the variance of a series across dyadic time scales, obtained from the
+maximal-overlap discrete wavelet transform (MODWT). Boundary-affected coefficients
+are removed by the \method{brick.wall} operator before the per-scale variance
+$\sigma^2_{d_j}$ is read, so scale $d_1$ corresponds to roughly $2$--$4$ day
+fluctuations, $d_2$ to $4$--$8$ days, and so on (\file{r/wavelet.R}). The same
+decomposition underlies the scale-resolved squared coherence
+$\rho^2_j=\mathrm{cor}(d^x_j,d^y_j)^2$ (\file{r/wavelet\_coherence.R}), which we label
+honestly as a discrete scale-resolved coherence rather than the continuous Morlet
+time-frequency object. P2 is the Stage-1 primitive of NAMH, MCPFM, and the
+contagion-channels frameworks.
+
+\paragraph{P3 -- directed information flow.}
+The object is transfer entropy $T_{Y\to X}$, the reduction in uncertainty about
+$X_{t+1}$ from knowing the past of $Y$ beyond the past of $X$ \citep{schreiber2000}.
+Three estimators sit under this primitive: the engine's own
+Kraskov--St{\"o}gbauer--Grassberger / Frenzel--Pompe $k$-nearest-neighbour estimator
+(\method{ksg\_te}, derived in full in \S\ref{sec:ksg}); the published \method{namh}
+package's Euclidean RANN variant (\method{namh\_te}); and a transparent
+wavelet-quantile measure built from MODWT and quantile regression (\method{wqte}).
+These are different estimators of the same object and their magnitudes are not
+cross-comparable, a boundary the runners state explicitly.
+
+\paragraph{P4 -- surrogate construction.}
+The object is a null distribution for a dependence statistic, built without parametric
+assumptions. The engine's default is the iterative amplitude-adjusted Fourier
+transform (IAAFT) of \citet{schreiber1996}: a surrogate of the source series is formed
+by alternately imposing the source's Fourier amplitude spectrum and its empirical
+amplitude distribution until the rank order stabilises, so the surrogate preserves the
+source's linear autocorrelation and marginal while destroying its (possibly nonlinear)
+predictive dependence on the target. Significance of a directed TE edge is then
+$p=(1+\#\{T^{\text{surr}}\ge T^{\text{obs}}\})/(B+1)$. Surrogate subtraction also
+defines \emph{effective} transfer entropy (\S\ref{sec:ksg}).
+
+\paragraph{P5 -- community detection.}
+The object is a partition of a directed weighted network into communities, with a
+modularity score $Q$. The published NAMH pipeline uses the Leiden algorithm
+\citep{traag2019}, which guarantees well-connected communities and corrects the
+resolution-limit pathologies of Louvain; the transparent \method{network} surface uses
+a Walktrap partition on the undirected projection of a Granger graph. A community
+result is only as meaningful as the adjacency it partitions: when the upstream FDR
+gate retains no edges, the partition is degenerate by construction and is reported as
+such, not dressed up.
+
+\paragraph{P6 -- connectedness and network formation.}
+The object is a system's total and directional connectedness from a vector
+autoregression's generalised forecast-error variance decomposition (GFEVD). The
+time-domain index is Diebold--Y{\i}lmaz \citep{diebold2012,diebold2014}; the
+frequency decomposition is Barun{\'i}k--K{\v r}ehl{\'i}k \citep{barunik2018}, which
+splits the total connectedness index across short ($\le 5$ day), medium ($5$--$20$
+day), and long ($>20$ day) bands by partitioning the spectral GFEVD at
+$\omega=2\pi/P$ (\file{r/connectedness.R}). The rolling variant
+(\method{spillover\_rolling}) tracks the index through time.
+
+\paragraph{P7 -- structural channel attribution.}
+The object is the share of a transmitted shock attributable to each of a fixed set of
+economic channels, identified with instruments rather than read off a reduced-form
+correlation. The published contagion-channels pipeline
+\citep{bhandari2026contagion,ccpkg} runs a two-stage detection-and-attribution
+procedure: Stage 1 detects directed tail linkages, Stage 2 attributes them to five
+mutually exclusive channels (trade, financial, geopolitical, behavioural, monetary)
+by instrumental-variables / two-stage least squares (\file{r/channel\_attribution.R}).
+This is the primitive that turns a network edge into an economic explanation.
+
+\paragraph{P8 -- ROC validation.}
+The object is the area under the receiver-operating-characteristic curve (AUC) of a
+binary forecast, with a significance test on the AUC. This is the primitive by which a
+predictive claim is held to account out of sample; MCPFM \citep{bhandari2025mcpfm}
+reports AUC with a DeLong test in version 1 and, under a pre-registered
+re-evaluation, a Hansen superior-predictive-ability test in version 2. We report both
+openly (\S\ref{sec:failable}).
+
+\subsection{The registry and its six families}
+\label{sec:registry}
+
+The \textbf{26} methods are grouped into six families by the statistical question they
+answer, not by which primitives they happen to share; a family is the unit a reader
+reasons about, while a primitive is the unit the code reuses. Table~\ref{tab:families}
+gives the family structure with a representative method or two from each, its
+primitive composition, and one verified value. The complete per-method registry with
+every pre-registered acceptance band is Appendix~A; here we show only the shape.
+
+\begin{table}[t]
+\centering
+\footnotesize
+\caption{The six families of the registry (26 methods total), with a representative
+method per family, the substrate primitives it composes, and one verified value. The
+full per-method acceptance bands are in Appendix~A. Counts: stationarity 5, volatility
+5, information flow 5, connectedness 6, contagion 2, reproduction 3.}
+\label{tab:families}
+\begin{tabular}{@{}p{4.2cm}p{3.8cm}p{1.5cm}p{4.7cm}@{}}
+\toprule
+\textbf{Family ($n$)} & \textbf{Representative method} & \textbf{Primitives} & \textbf{Verified value} \\
+\midrule
+Stationarity, cointegration, panels (5) &
+  \method{panel\_unit\_root}, \method{vecm} & -- &
+  IPS $-77.26$; Johansen rank 3 \\
+Volatility, long memory, spectra (5) &
+  \method{dfa\_hurst}, \method{wavelet} & P1, P2 &
+  India $H=0.542$; $d_1=47.07\%$ \\
+Information flow (5) &
+  \method{ksg\_te}, \method{wqte} & P3, P4 &
+  USA$\to$Japan TE $0.154234$ \\
+Connectedness, networks (6) &
+  \method{connectedness}, \method{network} & P5, P6 &
+  TCI $30.25\%$; density $0.5667$ \\
+Contagion, systemic risk (2) &
+  \method{channel\_attribution}, \method{sri\_daily} & P5, P7 &
+  GFC trade $27.9\%$ \\
+Reproduction, formal verification (3) &
+  \method{namh\_reproduce}, \method{soch\_robustness} & P1--P5 &
+  $\max|\Delta|\,1.55\times10^{-15}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Two points the table cannot show. First, the families are not silos: the same
+estimator can appear in several. Transfer entropy (P3) is the engine of the
+information-flow family, but it is also the first stage of the NAMH pipeline in the
+reproduction family. Second, a method may be either a \emph{transparent} realisation
+built from substrate parts, or a \emph{published} method that calls a paper's own
+package directly. \method{wqte} reimplements the WaveQTE Stage-1 primitive from
+\method{waveslim} and \method{quantreg} because the packaged estimator does not load
+in the image; \method{soch\_profile}, \method{channel\_attribution},
+\method{namh\_hurst}, and \method{namh\_te} call \method{sochcontagion}, \method{contagionchannels},
+and \method{namh} respectively, so the live engine runs the paper's own code. The
+distinction is recorded on every such method, because a transparent reimplementation
+and a bit-exact package call carry different reproduction claims.
+
+\subsection{The transfer-entropy estimator in full}
+\label{sec:ksg}
+
+Transfer entropy is the load-bearing primitive: it is the most-used edge statistic in
+the programme, the one quantity the GPU path must reproduce bit-for-bit, and the one
+whose estimator subtleties most repay a careful statement. We give it here at the
+depth of the implementation in \file{r/\_ksg\_core.R} and \file{gpu/ksg\_gpu.py}.
+
+\paragraph{Transfer entropy as conditional mutual information.}
+For an ordered pair $(Y\to X)$ with history length (lag) $\ell$, transfer entropy is
+the conditional mutual information between the one-step future of the target and the
+past of the source, given the past of the target \citep{schreiber2000}:
+\begin{equation}
+\label{eq:te-cmi}
+T_{Y\to X} \;=\; I\!\left(X_{t+1}\,;\, Y_t^{(\ell)} \;\middle|\; X_t^{(\ell)}\right),
+\qquad
+Y_t^{(\ell)} = \bigl(Y_t, Y_{t-1}, \dots, Y_{t-\ell+1}\bigr).
+\end{equation}
+The conditioning set $Z = X_t^{(\ell)}$ is the target's own past; the marginal blocks
+are $X = X_{t+1}$ (the future, dimension $1$) and $Y = Y_t^{(\ell)}$ (the source past,
+dimension $\ell$). The engine's default is $\ell=1$ (\method{ksg\_te} parameter
+\code{lag}), the Markov-1 conditioning under which the past blocks collapse to the
+single lagged values $X_t$ and $Y_t$. The embedding aligns the future $X_{t+1}$ with
+the lag blocks ending at $t$, so that one point of the joint sample is
+$(X_{t+1}, Y_t^{(\ell)}, X_t^{(\ell)})$.
+
+\paragraph{The KSG / Frenzel--Pompe estimator.}
+Rather than bin the joint density, the estimator counts neighbours. Following
+\citet{kraskov2004} for mutual information and \citet{frenzel2007} for its conditional
+extension, the conditional mutual information in Eq.~\eqref{eq:te-cmi} is estimated by
+\begin{equation}
+\label{eq:ksg-cmi}
+\widehat{I}(X;Y\mid Z) \;=\; \psi(k)
+  \;+\; \frac{1}{N}\sum_{i=1}^{N}\Bigl[\,
+    \psi\!\bigl(n^Z_i+1\bigr) - \psi\!\bigl(n^{XZ}_i+1\bigr) - \psi\!\bigl(n^{YZ}_i+1\bigr)
+  \,\Bigr],
+\end{equation}
+where $\psi$ is the digamma function, $k$ is the neighbour count (parameter \code{k},
+default $4$), and $N$ is the number of embedded points. The three counts are taken in
+the marginal sub-spaces of the conditioning set and its unions with each variable:
+$n^Z_i$, $n^{XZ}_i$, $n^{YZ}_i$ count the points whose distance from point $i$ in the
+$Z$, $(X,Z)$, and $(Y,Z)$ sub-spaces respectively is strictly less than $\epsilon_i$.
+This is the \method{.ksg\_cmi} function; the transfer entropy
+$T_{Y\to X}=\widehat{I}$ at $Z=X_t^{(\ell)}$ is \method{.te}.
+
+\paragraph{The max-norm and the neighbour radius.}
+The metric is the maximum (Chebyshev) norm,
+\begin{equation}
+\label{eq:maxnorm}
+\Norm{u-v}_\infty \;=\; \max_{c} \,\lvert u_c - v_c \rvert,
+\end{equation}
+taken over all coordinates of the relevant space. The radius $\epsilon_i$ is the
+max-norm distance from point $i$ to its $k$-th nearest neighbour in the \emph{full}
+joint space $(X,Y,Z)$, self excluded. The engine works in raw return coordinates and
+does not standardise, because the G20 series are already daily log-returns and the
+max-norm is not scale-invariant, so a $z$-score would change the estimate; the runners
+and the GPU helper both note this. Computing $\epsilon_i$ exactly under the max-norm on
+a tree built for the Euclidean norm uses the inclusion $\Norm{\cdot}_\infty \le
+\Norm{\cdot}_2 \le \sqrt{d}\,\Norm{\cdot}_\infty$: an inflated $L_2$ candidate list is
+pulled, exact Chebyshev distances are recomputed, the $k$-th smallest is taken, and a
+point's radius is accepted only once its candidate list provably covers that radius
+(\method{.maxnorm\_knn\_dist}). This makes the radius exact, not approximate.
+
+\paragraph{The one-dimensional count boundary.}
+A subtlety the bit-exactness gate caught, and which a careful reader should know about,
+lives in how the strict-inequality counts are realised. For a sub-space of dimension
+$\ge 2$ the count is taken directly as $\#\{j\neq i : \Norm{u_i-u_j}_\infty <
+\epsilon_i\}$ by recomputing the max-norm and applying $<$ (\method{.count\_kd}). For a
+one-dimensional sub-space (which arises for the $Z$ count when $\ell=1$) the engine
+uses a sorted-array realisation via \method{findInterval}
+(\method{.count\_1d}), testing membership against the half-open interval
+$[v-\epsilon,\, v+\epsilon)$ rather than the absolute form $|v_j-v|<\epsilon$. The two
+disagree on exactly one floating-point boundary tie: when $|v_j-v|$ rounds to exactly
+$\epsilon$ but $v-\epsilon$ rounds down, the interval form \emph{includes} the point
+that the absolute form rejects. The engine's choice is the \method{.count\_1d}
+convention, and the GPU helper reproduces that convention host-side rather than the
+textbook absolute form (\file{gpu/ksg\_gpu.py}, \method{\_count\_1d\_engine\_batch}),
+so the observed estimate matches the engine's own six-decimal emission exactly. The
+lesson, recorded as a learning, is to gate on the estimator's own output including its
+floating-point boundary conventions, not on the textbook formula.
+
+\paragraph{Effective transfer entropy.}
+The raw estimate of Eq.~\eqref{eq:ksg-cmi} carries a finite-sample bias that does not
+vanish under the null of no information flow. Following the surrogate bias-correction
+of \citet{marschinski2002}, the \emph{effective} transfer entropy subtracts the mean of
+the estimator over surrogate source series that share the source's marginal and linear
+autocorrelation but carry no directed dependence on the target:
+\begin{equation}
+\label{eq:ete}
+T^{\text{eff}}_{Y\to X}
+  \;=\; T_{Y\to X} \;-\; \frac{1}{B}\sum_{b=1}^{B} T_{\,\tilde Y^{(b)}\to X},
+\qquad \tilde Y^{(b)} \sim \text{IAAFT}(Y),
+\end{equation}
+with $B$ surrogates drawn by the IAAFT of \S\ref{sec:primitives}. The same surrogate
+ensemble gives the permutation $p$-value $p=(1+\#\{T_{\tilde Y\to X}\ge
+T_{Y\to X}\})/(B+1)$. The published NAMH pipeline computes
+Eq.~\eqref{eq:ete} explicitly (\method{TE\_eff} in \file{r/namh\_pipeline.R}); the
+deterministic \method{namh\_te} method returns the raw estimate only and states that
+the effective TE and the $p$-values, being surrogate-dependent and unseeded in the
+package, are not bit-reproducible and belong to the async pipeline.
+
+\paragraph{GPU equivalence on the observed estimate.}
+The cost is an $O(N^2)$ max-norm neighbour search, once per directed pair and once per
+surrogate, which previously saturated the workstation. The search now runs on the
+RTX 3000 Ada GPU through two \method{numba.cuda} kernels (one for the radii, one for
+the three counts), with the IAAFT surrogates batched on the host
+(\file{gpu/ksg\_gpu.py}). Crucially, the \emph{observed} transfer entropy is the only
+quantity the evaluation suite gates, and it is held bit-exact to the CPU estimator:
+the measured maximum discrepancy is $7\times10^{-16}$ and the six-decimal emission is
+identical, across $\ell\in\{1,2\}$ and $k\in\{4,5\}$, verified by
+\file{gpu/equiv\_gate.R}. The $p$-value is an unseeded surrogate draw in both the CPU
+and GPU paths and is never claimed reproducible. Defaulting to the GPU therefore can
+never move a published number; a box with no CUDA device, or a forced \code{CE\_GPU=0},
+degrades silently to the governed CPU path.
+
+\subsection{Determinism and reproducibility of the estimators}
+\label{sec:determinism}
+
+Reproducibility of a Monte-Carlo estimator requires that two facts be pinned: the
+random stream, and the order of reduction. The engine pins both.
+
+\paragraph{The random stream.}
+Where a method's result depends on a draw, the runner sets
+\code{RNGkind("L'Ecuyer-CMRG")} and \code{set.seed(42)} before the computation. The
+combined multiple-recursive generator of \citet{lecuyer1999} is chosen because it
+splits into independent sub-streams that \method{parallel::mclapply} can hand to its
+fork workers deterministically: under a fixed seed each child stream derives
+reproducibly from the master seed. The canonical surrogate count is $B=200$. The
+published NAMH end-to-end run is the clearest case (\file{r/namh\_pipeline.R}): the
+\method{namh} package's own IAAFT generator is unseeded, so the paper's published
+surrogate run is not bit-reproducible; the engine's runner pins the seed and the
+generator so that its result \emph{is} reproducible for a fixed
+$\{\text{seed}, n_{\text{cores}}\}$ pair. That dependence on the core count, through
+the stream split, is stated rather than hidden. The two \method{ksg} methods are
+deliberately \emph{not} seeded, so their surrogate $p$-values are an honest
+non-reproducible draw in both the CPU and GPU paths; their reproducible content is the
+observed TE, which carries no randomness.
+
+\paragraph{The order-free reduction.}
+The directed-pair and grid loops are order-free: the result is a set of per-pair
+estimates reduced by operations (sums, means, rank correlations, set overlaps) that do
+not depend on the order in which the pairs complete. This is what lets the worker
+count be governed without touching a number. The shared helper
+\method{ce\_ncores} in \file{r/\_io.R} sets the \method{mclapply} budget from a base of
+\code{detectCores()} minus a reserve, overridden by an explicit \code{n\_cores}, and
+clamped last by a hard ceiling \code{CE\_MAX\_CORES} (which the tower sets to
+$\lfloor(\text{cpus}-2)/\text{MAX\_CONCURRENT}\rfloor=10$ on the workstation). BLAS
+threading is pinned to one thread per spawn. Because the loops are order-free, changing
+the worker count from one to ten never changes a TE value; it only governs CPU. This is
+the formal content of an invariant the system depends on.
+
+\begin{invariant}[Worker-count neutrality]
+\label{inv:order-free}
+For every method that reduces a set of independently computed per-pair or per-grid
+estimates, the emitted result is invariant to the number of parallel workers and to the
+order in which they complete. Core governance and BLAS pinning therefore change CPU
+occupancy, never a published value.
+\end{invariant}
+
+\subsection{A failable test per method}
+\label{sec:failable}
+
+The discipline that makes the registry trustworthy is one rule, applied without
+exception.
+
+\begin{principle}[Catalogue entry requires a failable test]
+\label{prin:failable}
+A method enters the registry only with a pre-registered, failable acceptance band on
+its own output, fixed before the run. A regression turns the public dashboard red
+rather than passing silently; a hole is marked, never filled; and the band is never
+edited to fit a result.
+\end{principle}
+
+Three verified examples show the principle at work, drawn from
+Table~\ref{tab:families} and the registry. They are stated with their provenance, in
+the registered measured voice, because a real number with a band is worth more than an
+adjective.
+
+\begin{cexample}[An observed estimate in band]
+\label{ex:ksg}
+The \method{ksg\_te} method on the 18-market G20 panel returns the USA$\to$Japan
+transfer entropy as $\mathbf{0.154234}$, across $306$ directed pairs of which $108$ are
+significant at $p<0.05$ against IAAFT source surrogates. The pre-registered band is
+$T\in[0.150,0.158]$; the value sits inside it. The same observed estimate is the
+quantity the GPU path reproduces to $7\times10^{-16}$, and a full-panel re-run of all
+$306$ pairs reproduced $0.154234$ exactly.
+\end{cexample}
+
+\begin{cexample}[A stability claim across nuisance parameters]
+\label{ex:robustness}
+The \method{ksg\_robustness} sweep re-runs the same estimator across the grid
+$k\in\{3,4,6,8\}\times\ell\in\{1,2\}$ and checks two pre-registered conditions: that the
+headline directed edge is ranked first at every grid point, and that the mean Spearman
+rank correlation of the full directed-TE vector against the baseline lies in
+$[0.6,0.85]$. Both hold: the mean Spearman is $\mathbf{0.7282}$ (minimum $0.581$), and
+USA$\to$Japan is the \#1 directed edge across all eight $(k,\ell)$ settings. The
+headline link is therefore robust to the estimator's nuisance parameters, not an
+artefact of one choice.
+\end{cexample}
+
+\begin{cexample}[A published estimate held to a tight band]
+\label{ex:namh}
+The \method{namh\_hurst} method, running the published \method{namh} package on its
+rolling-window panel, returns a mean Hurst exponent for Gold of $\mathbf{0.490}$
+($0.4899$). The pre-registered band is $[0.4889,0.4909]$, a tight window that would
+fail loudly on any drift in the package or the data. The value is reproduced to
+$\max|\Delta|\,1.55\times10^{-15}$ same-machine by the \method{namh\_reproduce}
+$\Delta$-verifier.
+\end{cexample}
+
+Honest negatives are themselves results under Principle~\ref{prin:failable} and are
+immutable facts of the record, not failures to be hidden. The MCPFM out-of-sample call
+returns AUC $0.581$ (DeLong $p=0.030$) in version 1; a pre-registered version-2
+re-evaluation returns AUC $0.470$ (Hansen SPA $p=0.031$), and that lower figure is
+reported openly with a reproduce status of honest-pending. The NAMH pipeline's own
+Benjamini--Hochberg FDR gate retains $0/552$ directed edges at the canonical
+configuration, so its masked network, fixed point, and communities are degenerate by
+construction and are emitted as measured, in the dashboard's honest amber, rather than
+magnitude-dressed. A method that asserted a clean network there would be the failure;
+reporting the empty gate is the discipline.

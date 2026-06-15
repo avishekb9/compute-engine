@@ -1,0 +1,142 @@
+\section{Design principles, limitations, and outlook}
+\label{sec:outlook}
+
+The engine is deliberately small, and we intend to keep it so while widening what
+it can certify. This closing section distils the principles that the preceding
+sections established, states the limitations plainly, and describes the
+self-renewing programme we are building towards. The throughline is unchanged
+from the first version of the engine: a research result should be a re-runnable,
+self-checking object, and the infrastructure that makes it so is worth building
+once, carefully, and maintaining in the open.
+
+\subsection{The design principles, distilled}
+
+Five principles carry the design. Each was learned in operation, several the hard
+way, and each is stated here in the form the project applies to itself.
+
+\begin{principle}[Parameterised-only registry]
+A request names a method and schema-validated parameters; it never supplies code.
+The registry is therefore the primary guard against arbitrary-code execution, and
+the operating-system sandbox is defence in depth on top of it, not the
+load-bearing control.
+\end{principle}
+
+\begin{principle}[A failable test per method]
+A method is not in the catalogue until it ships with a pre-registered, failable
+test of its own output. Holes in coverage are marked, never filled. The registered
+preference is explicit: we would rather have twenty-six checked methods than
+fifty asserted ones.
+\end{principle}
+
+\begin{principle}[Honest negatives are results]
+A result that does not clear its test, or that contradicts an earlier finding, is
+reported as such and treated as an immutable fact of the record. The
+not-significant SOCH-C test ($p=0.105$), the degenerate false-discovery-controlled
+NAMH network ($0/552$), and the below-chance MCPFM v2 re-evaluation (AUC $0.470$)
+are findings, not blemishes to be managed away.
+\end{principle}
+
+The remaining two principles are properties the system maintains rather than
+preferences it expresses, so we state them as invariants.
+
+\begin{invariant}[Governed determinism]
+Worker count never changes a number. A single governed core budget, clamped last
+by a server-set hard ceiling, with linear-algebra threading pinned to one thread
+per spawned process, makes every result independent of how many workers run it.
+The transfer-entropy loops are order-free, so this is determinism-safe, and the
+GPU offload of the same computation is held bit-exact to the CPU estimator on the
+only gated quantity, the observed transfer entropy, to within machine epsilon.
+\end{invariant}
+
+\begin{invariant}[Machine-written ledgers are never hand-edited]
+The single evaluation artefact, the state ledger's measured block, and the claims
+record are written by their generators and never by hand. A regression turns the
+public dashboard red rather than passing silently; the state ledger is loud about
+drift; and the claims record never deletes, so a result that turns red becomes a
+contested pair rather than a quiet disappearance.
+\end{invariant}
+
+These five are not independent. The failable-test principle is what makes the
+honest-negative principle enforceable; the never-hand-edit invariant is what
+makes both credible to a reader who was not in the room. Together they are the
+sense in which the engine's reliability is a property of its process rather than a
+promise from its authors.
+
+\subsection{Limitations}
+
+We state the limitations plainly, because the discipline that reports honest
+negatives in the elements applies equally to the engine that carries them.
+
+\paragraph{Reported degeneracies and negatives.} Some of the programme's
+headline tests do not clear, and we have not hidden this. The
+false-discovery-controlled NAMH network is degenerate, retaining $0$ of $552$
+candidate edges; the engine's NAMH centralities are magnitude-ordered and are not
+a claim that the FDR-gated network is non-empty. The pre-registered MCPFM v2
+re-evaluation returns an area under the ROC curve of $0.470$, below chance. The
+SOCH-C significance test is not significant at $p=0.105$. None of these is a bug
+to be fixed; each is a fact of the record.
+
+\paragraph{Infrastructure constraints.} The heavy asynchronous estimators run on
+a single workstation tower, so the engine's throughput on the four tower methods
+is bounded by one machine and its one GPU; a second compute node is a
+pre-registered future step, not a present capability. The natural-language layer
+is rate-limited and budget-capped: over its daily cap it returns an explicit
+capacity error with a reset hint, never a fabricated answer, which is the right
+failure but is a hard ceiling on interactive use. The formal layer is partial:
+of twelve Lean~4 declarations, eleven are machine-accepted and one, the analytic
+half of the peak-location lemma, honestly carries a \code{sorry}; the spectral
+theory is closed where the proposition $\Norm{H(\omega)}^2 = S(\omega)$ is
+concerned, but the peak-location chain is not yet complete.
+
+\paragraph{Scope.} The engine certifies what its twenty-six methods cover and no
+more. A question outside the catalogue has no banded answer, by design, and a
+figure outside the verified record is marked for verification rather than
+asserted. This is a deliberate narrowness, but it is a narrowness, and the
+honest description of the engine is that it makes a fixed catalogue
+re-runnable, not that it makes financial econometrics in general reproducible.
+
+\subsection{Towards a self-renewing programme}
+
+The direction of travel is to make the engine adaptive in the same disciplined
+sense the markets it studies are adaptive: a system that learns from its own
+operation without ever loosening the gate that keeps it honest.
+
+\paragraph{The nightly loop as a learning system.} The engine's daily systemic-risk
+tick already runs unattended on a managed scheduler. A reboot-surviving nightly loop,
+now installed in cron, re-arms the tower, runs the
+full public suite as one genuine execution with the asynchronous rows submitted
+as real jobs, refreshes the state ledger and appends any drift, refreshes the
+claims record without ever deleting, and renders and publishes an academic report
+of the night's run. Crucially, the loop's own wiring is itself a failable
+evaluation: the system that checks the engine is checked by the same kind of
+pre-registered test it applies to everything else. The next step is to treat the
+sequence of nightly runs as a learning record, so that drift over time becomes a
+first-class signal rather than a per-night log line.
+
+\paragraph{Pre-registered, PI-gated gap proposals.} A gap-proposal pipeline reads
+the engine's own usage and coverage and proposes candidate additions to the
+catalogue. It is pre-registered and never auto-deploys: a proposal is a review
+document for the principal investigator, not a change to the live registry. When
+the pipeline ran end-to-end and its rule found no qualifying gap, that
+no-proposal outcome was recorded as a first-class result, in the same spirit as a
+not-significant test. The design intent is a catalogue that can grow on evidence
+while every addition still passes through the same human gate and the same
+failable-test requirement.
+
+\paragraph{More elements, more formal coverage.} Two expansions are in view on the
+same terms. First, more elements may join the programme, each only with a failable
+evaluation and each instantiating the shared substrate, so that the marginal cost
+of a new framework is the cost of its configuration and its test, not a new
+codebase. Second, the formal layer can grow: closing the remaining \code{sorry} in
+the SOCH peak-location chain, and extending machine-checked proof to results
+beyond SOCH, would widen the set of claims the engine can certify at the level of
+a checked proof rather than a banded number.
+
+\paragraph{The self-renewing vision.} Taken together, these point at a programme
+that renews itself: a fixed, sandboxed engine; a shared substrate that new
+elements configure rather than reinvent; a nightly loop that learns from its own
+record; and a gap pipeline that proposes growth under a standing human gate. We
+do not claim this is finished, and we have stated where it is partial. We claim
+only that the parts are built, that they hold to the standard we have described,
+and that the standard, not any single number, is the contribution we are most
+willing to defend.

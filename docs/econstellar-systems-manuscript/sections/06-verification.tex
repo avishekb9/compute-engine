@@ -1,0 +1,366 @@
+\section{Verification and Epistemics}
+\label{sec:verification}
+
+The engine's claim to trustworthiness does not rest on the authors' assurance.
+It rests on a small set of machine-run artefacts that any reader can inspect and,
+given the repository, re-execute: a pre-registered evaluation suite that grades
+live computation against failable numerical bands, a nightly loop that re-runs
+that suite and writes its own findings into a ledger it does not get to edit by
+hand, a claims record that demotes rather than deletes, and a thin formal layer
+in which one identity is closed in a proof assistant with an honest count of what
+remains open. This section describes those four artefacts and the single property
+that ties them together: the apparatus is built so that its own correctness, and
+the wiring that enforces it, are themselves things that can fail a test in public.
+
+\subsection{The evaluation suite}
+\label{sec:verification-evals}
+
+The suite lives in \file{evals/run-evals.mjs} and emits a single artefact,
+\file{evals.json}. Each catalogue method has exactly one row. A row names the
+method, the parameter object it is called with, an \code{expected} string stating
+the pre-registered band in plain language, a \code{source} citing where that band
+comes from, and a \code{check} function that extracts one quantity from the live
+result and returns a boolean. The runner posts the request to the deployed engine
+(or, for the four heavy asynchronous methods, submits a real job to the
+workstation job server and polls it to completion), applies the check, and records
+the verdict. It computes; it does not read a cached number. The most recent full
+run recorded \textbf{26 of 26 rows passing} (0 fail, 0 pending) against the live
+service.
+
+Three rules govern the artefact, and each is enforced by construction rather than
+by convention.
+
+\begin{principle}[Bands are pre-registered and failable]
+A band is fixed before the run, from a documented verified value, and is written
+so that the result can fall outside it. Where a method's verified tuple does not
+pin a full configuration, the band degrades to an invariant check that can still
+fail on the wrong shape, a non-finite value, an unstable system, or a wrong
+verdict, never to a check that always passes.
+\end{principle}
+
+\begin{principle}[The artefact is never hand-edited]
+\file{evals.json} is the output of one genuine execution of the committed runner.
+A red row is information, not a defect to be quietly corrected in the file. To
+change a number one re-runs the suite, not the artefact.
+\end{principle}
+
+\begin{principle}[A band failure halts; only extraction may be calibrated]
+Failures split in two. A \emph{band} failure means the engine is wrong: work
+stops and the cause is investigated. An \emph{extraction} failure means the
+harness misread the result's shape: the check is corrected and the whole suite is
+re-run. Fixing extraction is calibration, not gaming, only when the expected band
+is left untouched.
+\end{principle}
+
+The bands are not decorative, and several of them encode a number whose value is
+the point. Three rows make the discipline concrete. The first is an ordinary
+positive result. The synchronous transfer-entropy row \method{ksg\_te} calls the
+estimator on the USA and Japan series and checks the directed edge:
+
+\begin{lstlisting}[language=JavaScript]
+{ m: "ksg_te", p: { series: ["USA", "Japan"] }, async: true,
+  expected: "USA->Japan full-sample KSG TE in [0.150,0.158] (verified 0.1542)",
+  src: "A2 + #39 anchor",
+  check: r => { const e = (r.edges || r.pairs || [])
+      .find(x => /usa/i.test(x.from) && /japan/i.test(x.to)) || {};
+    const v = num(e.te ?? e.TE);
+    return { value: v, pass: inBand(v, 0.150, 0.158) }; } }
+\end{lstlisting}
+
+\noindent The last full run returned $0.154234$ for this edge, inside the band,
+from a real job on the tower (\code{job\_20260612\_92fa3f31}); the worked trace in
+Section~\ref{sec:worked} follows that exact call from HTTP request to single-JSON
+response. The second is a degenerate negative that must \emph{stay} degenerate.
+The \method{namh\_pipeline} row runs the full NAMH surrogate pipeline end to end
+under a fixed seed and checks that, under the paper's own Benjamini--Hochberg
+gate \citep{benjamini1995}, the network is empty:
+
+\begin{lstlisting}[language=JavaScript]
+{ m: "namh_pipeline",
+  p: { n_surrogates: 200, window_index: 1, seed: 42, n_cores: 2 }, async: true,
+  expected: "FDR retains 0/552 under the paper's own gate (degenerate, honest amber);
+             raw te_mean in [-0.2242,-0.2222]",
+  check: r => { const w = (r.per_window || [])[0] || {}; const f = w.fdr || {};
+    const c = r.config || {};
+    return { value: num(w.te_raw && w.te_raw.mean),
+      pass: num(f.n_edges) === 0 && num(f.n_possible) === 552
+            && w.degenerate === true
+            && inBand(num(w.te_raw && w.te_raw.mean), -0.2242, -0.2222)
+            && c.seed === 42 && c.rng === "L'Ecuyer-CMRG" }; } }
+\end{lstlisting}
+
+\noindent Here a \emph{populated} network would be the failure and the empty one
+is the pass: the row insists on \textbf{0 of 552} directed edges retained in the
+window, the window flagged \code{degenerate}, the raw window mean inside
+$[-0.2242,-0.2222]$ (the last run returned $-0.22322165$), and the generator
+pinned to L'Ecuyer's combined multiple-recursive scheme \citep{lecuyer1999} at
+seed 42. The third is the live systemic-risk index. The \method{sri\_daily} row
+recomputes the static-panel index in full from the stored panel and checks it
+against a band one part in $10^{5}$ wide, $[0.00848, 0.00850]$, around the first
+honest point $0.00849$ over 306 directed pairs. A reproduction target this tight
+can only be met by re-running the same computation, which is the property the row
+exists to certify.
+
+The suite is honest about its own operational hazards, which is itself part of
+the discipline. The runner rides out a Cloud Run cold start with a second,
+longer health probe, because a single short probe once misreported a live engine
+as unreachable while all rows passed; it waits politely under the engine's
+rate limit rather than recording a self-inflicted red; and asynchronous rows are
+either real tower jobs with persistent identifiers or honest \code{async\_pending}
+placeholders, never fabricated values. The artefact records, per row, the
+measured value, the elapsed milliseconds, whether the engine served it from cache,
+and any job identifier, so that the run can be audited line by line.
+
+\subsection{The nightly self-learning loop}
+\label{sec:verification-loop}
+
+The suite would be a static check were it not re-run. The centrepiece of the
+verification layer is the loop in \file{scripts/nightly-loop.sh}, installed under
+\code{cron} at \code{10 7 * * *} UTC, fifty minutes after the 06:00 UTC systemic-
+risk tick. Its design intent is to survive a reboot, to be loud in the cron log
+when something regresses, and never to silently repair a problem it should
+surface. The cron entry and the script are installed and self-tested; at the time
+of writing the loop has not yet completed an unattended run, so its cadence is
+reported as configured rather than demonstrated. It re-arms the long-lived job
+server only if its port is closed, killing
+nothing, then runs the six steps summarised in Table~\ref{tab:loop} and pictured
+in Figure~\ref{fig:loop}.
+
+\begin{figure}[t]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[font=\footnotesize, node distance=5.5mm,
+  st/.style={draw=cegrey, thick, rounded corners=2pt, fill=celight, align=center,
+    inner sep=4pt, text width=2.05cm, minimum height=11mm},
+  gate/.style={st, fill=ceorange!16, draw=ceorange},
+  ar/.style={-{Stealth[length=2mm]}, thick, draw=cegrey}]
+  \node[st]              (s1) {1.\ \code{run-evals}\\[1pt]\scriptsize real compute};
+  \node[gate, right=of s1] (s2) {2.\ \code{state-refresh}\\[1pt]\scriptsize MEASURED $+$ DRIFT};
+  \node[st, right=of s2] (s3) {3.\ \code{claims-refresh}\\[1pt]\scriptsize demote, never delete};
+  \node[st, right=of s3] (s4) {4.\ \code{gen-report}\\[1pt]\scriptsize verbatim \LaTeX};
+  \node[st, right=of s4] (s5) {5.\ \code{publish}\\[1pt]\scriptsize report gallery};
+  \node[st, right=of s5] (s6) {6.\ \code{gap-proposals}\\[1pt]\scriptsize PI-gated};
+  \foreach \a/\b in {s1/s2,s2/s3,s3/s4,s4/s5,s5/s6} \draw[ar] (\a)--(\b);
+  \node[font=\scriptsize, text=ceorange, above=1mm of s2] {regression $\to$ exit 2};
+  \node[font=\scriptsize, text=cegreen, below=4mm of s5.south]
+    {steps 4--6: log-only, \code{nice -19}, zero compute (cannot re-trigger the hang)};
+\end{tikzpicture}}
+\caption{The six-step nightly loop. Step~2 governs the exit code, turning a
+regression into a non-zero exit and a red dashboard; steps 4--6 do no computation,
+so the reporting layer can never re-trigger a saturation. No step deletes a claim
+or edits a result.}
+\label{fig:loop}
+\end{figure}
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{@{}c l p{0.62\textwidth}@{}}
+\toprule
+Step & Script & What it does, and how it stays honest \\
+\midrule
+1 & \file{run-evals.mjs} & Re-arms the job server (port-guarded, no kills), then runs the full suite, async rows as real tower jobs, writing a fresh \file{evals.json}. \\
+2 & \file{state-refresh.mjs} & Measures live health, the eval summary, and the SRI feed; rewrites \emph{only} the \code{MEASURED} block of \file{STATE.md} and appends a dated \code{DRIFT} line on any regression. Its exit code is the loop's: non-zero means a problem line was written. \\
+3 & \file{claims-refresh.mjs} & Re-verifies the mapped claims against the same night's artefact: a pass bumps \code{last\_verified}; a red marks the claim \code{contested} and inserts the other side of the pair. Never deletes. Log-only, so a database outage cannot repaint the night. \\
+4 & \file{gen-compute-report.mjs} & Renders a LaTeX run report verbatim from \file{evals.json}; never recomputes, never invents, renders failures as loudly as passes. Run \code{nice -n 19} so it always yields to a tower job. \\
+5 & \file{publish-reports.mjs} & Copies each report PDF and a thumbnail into the static report gallery and rewrites its manifest. Pure file copy, \code{nice}'d, non-fatal. \\
+6 & \file{gap-proposals.mjs} & Mines the demand signals the engine exposes, applies the pre-registered rule, and emits PI-review candidate skeletons. Never auto-deploys. \\
+\bottomrule
+\end{tabular}
+\caption{The six steps of \file{scripts/nightly-loop.sh}. Step~2 owns the loop's
+exit code, so a regression is loud in the cron log; steps 4--6 are log-only and
+non-fatal, so a rendering or reporting fault cannot mask the canary in steps
+1--3.}
+\label{tab:loop}
+\end{table}
+
+Two properties of the loop are worth drawing out. The first is the division of
+authority between its steps. The eval suite and \method{state-refresh} are the
+canary: \method{state-refresh} exits 2 on any regression -- the engine
+unreachable, a failed eval, a changed method count, or a systemic-risk feed stale
+beyond three weekdays -- and that exit code becomes the loop's, so a problem is
+never silent. Everything downstream is deliberately log-only and non-fatal. A
+BigQuery outage in the claims step, a LaTeX fault in the report step, or a missing
+checkout in the publish step is recorded and skipped; none is allowed to repaint
+a night whose real signal is the suite and the state ledger above it. The report
+step is the one that can always yield, which is why it runs \code{nice -n 19}: it
+is pure rendering plus a single \code{pdflatex} pass, and it must never contend
+with a long-running tower job for the processor.
+
+The second property is the one we hold to most firmly: the loop's own wiring is a
+failable eval. A separate test, \file{evals/loop-integrity.test.mjs}, asserts
+that the steps exist, that the artefact paths the steps pass to one another agree,
+that the set of claims the refresher maps is a subset of the suite's rows, that no
+step on the nightly path issues a delete, that the gap rule and its PI gate are
+intact, and that the installed state is reported honestly. We record this as an
+invariant because it is the load-bearing one.
+
+\begin{invariant}[The verifier verifies itself]
+\label{inv:self}
+The self-checking loop is subject to the same standard as the methods it checks:
+its wiring -- step existence, artefact-path agreement, the claims-to-evals
+subset relation, the no-delete rule, and the pre-registered, PI-gated gap rule
+-- is itself a pre-registered, failable test. The apparatus that asserts
+correctness can therefore fail loudly when its own assumptions break.
+\end{invariant}
+
+\noindent That this is not a formality is visible in the test's history: its first
+execution was red, eleven of twenty, and all of the failures were the harness
+misreading shapes (a \code{m:} key written \code{method:}, a quoted path, a
+\code{DELETE} appearing inside a comment). Those were extraction failures,
+calibrated per the band-versus-harness rule with the bands untouched, and the
+test then went green -- exactly the discipline the suite imposes on every other
+row, now imposed on the loop itself.
+
+\subsection{The learning ledger}
+\label{sec:verification-ledger}
+
+The engine keeps a single state file, \file{STATE.md}, with three blocks. The
+\code{MEASURED} block is machine-written by \method{state-refresh} and is never
+touched by hand; the \code{LEDGER} block is appended by working sessions; the
+\code{LEARNING} block stages each burned lesson through a fixed lifecycle --
+\emph{fail} (the lesson enters when something breaks), \emph{investigate} (the
+cause is named), \emph{verify} (the fix is proven), and \emph{distill} (the lesson
+is promoted to a consultable Skill). Thirteen learnings are recorded;
+Table~\ref{tab:learnings} states each in a line.
+
+\begin{table}[t]
+\centering
+\footnotesize
+\begin{tabular}{@{}c l l p{0.50\textwidth}@{}}
+\toprule
+ID & Date & Stage & Lesson (terse) \\
+\midrule
+L1 & 2026-06-11 & distilled & A robustness grid must anchor through the paper's own scripts and estimation universe before any badge is written. \\
+L2 & 2026-06-11 & distilled & Moving the engine root silently changes API-key resolution and can ship a chat-disabled revision; check the WARN line. \\
+L3 & 2026-06-10 & distilled & Yahoo serves \code{close: null} for hours after a session; the finite-close guard makes the tick skip honestly. The schedule is the guard. \\
+L4 & 2026-06-11 & distilled & Eval failures split into band failures (stop, investigate) and extraction failures (fix the check); calibration only with the band untouched. \\
+L5 & 2026-06-11 & distilled & A documented tuple must name its full parameterisation or it is not a reproducible claim (the five-market panel). \\
+L6 & 2026-06-08 & distilled & LaTeX source grep is insufficient for fact consistency; verify against the rendered PDF, including figure labels. \\
+L7 & 2026-06-12 & distilled & A reboot killed both daemons mid-pipeline; long-lived services need a reboot-surviving re-arm, and pipelines should write artefacts as they go. \\
+L8 & 2026-06-04 & distilled & Bibliography titles are looked up, never reconstructed from a codename; verify id, title, and authors against the registered record. \\
+L9 & 2026-06-12 & verify & A dual-use script must guard its CLI dispatch with the main-module check, or an import can fire the wrong routine. \\
+L10 & 2026-06-12 & verify & Grep a large vendored dependency's own source for exact symbol names before writing against it (the Lean proof compiled first try). \\
+L11 & 2026-06-13 & verify & The 22-core hang had one cause: hard-coded \code{detectCores()-1} fan-out under concurrency; fixed by one server-set core ceiling with pinned BLAS. \\
+L12 & 2026-06-13 & verify & GPU offload is feasible now with no install; the hung k-NN primitive ports to two CUDA kernels and is bit-exact to the FP64 CPU reference. \\
+L13 & 2026-06-13 & verify & \method{ksg\_te} and \method{ksg\_robustness} now dispatch to the GPU, gated on the estimator's own output including its floating-point boundary quirk. \\
+\bottomrule
+\end{tabular}
+\caption{The learning ledger \file{STATE.md} L1--L13. A lesson enters at
+\emph{fail}, is named at \emph{investigate}, proven at \emph{verify}, and promoted
+to a Skill at \emph{distill}.}
+\label{tab:learnings}
+\end{table}
+
+Three of these are load-bearing for the systems story told elsewhere in this
+paper. L11 is the resolution of the core-governance hang: two concurrent
+robustness jobs each forked one worker per logical core, $2 \times 21$ workers
+against unpinned multi-threaded linear algebra, and the fix was a single governed
+budget -- one server-set core ceiling clamped last, with the BLAS thread count
+pinned to one, applied at every parallel fan-out site. The pin is a determinism
+gain as much as a stability one. L12 and L13 are the GPU bit-exactness bar: the
+nearest-neighbour search that hung the workstation ports to two CUDA kernels, and
+the gate insists the device \emph{equal} the CPU estimator rather than approximate
+it. The non-obvious lesson distilled there is that one must gate on the
+estimator's own output, including its floating-point boundary behaviour, not on
+the textbook form of the estimator -- a one-dimensional neighbour count using
+\code{findInterval} includes a boundary point that the absolute-difference form
+excludes, and the gate caught it. Together these three turned an unbounded CPU
+fork into a governed budget plus a bit-exact device offload, and each remains in
+the ledger at \emph{verify} pending the gated promotion to a Skill.
+
+\subsection{The claims ledger}
+\label{sec:verification-claims}
+
+Above the per-run artefact sits a slower record: what the engine takes itself to
+know. The claims ledger is a BigQuery table whose schema is fixed in
+\file{epistemic/schema.json}. Each row is one claim, with a stable
+\code{claim\_id}; a \code{type} drawn from \{empirical, methodological, formal,
+robustness, hole\}; a \code{statement} written in one paragraph including its own
+limits; an \code{established\_at} and a nullable \code{last\_verified} timestamp;
+a nullable \code{confidence} that carries a badge pass-rate where the claim is
+badge-derived and is \code{NULL} otherwise, never invented; repeated
+\code{conditions} and \code{counter\_conditions}; repeated \code{provenance\_ids}
+so that every claim traces to a job, a badge, a file anchor, or a build; repeated
+\code{paper\_refs}; and a \code{status} of \emph{established}, \emph{contested}, or
+\emph{superseded}.
+
+The ledger is seeded from verified ground truth alone by
+\file{scripts/claims-seed.mjs}, which carries roughly twenty provenanced claims
+and validates each against the schema before any write. The seeded set is
+deliberately catholic about what counts as knowledge: it includes empirical
+results (the USA-to-Japan transfer entropy; the Table-5-exact channel shares), a
+formal claim (the closed spectral identity below), methodological claims (that the
+live index shares only a name, not a validation, with the published systemic-risk
+index), and \emph{holes} stated as claims about the programme's own gaps (that the
+WaveQTE Stage-1 estimator is structurally unavailable in the image and the
+engine's variant is a labelled reimplementation). Honest negatives and marked
+holes are first-class rows, not omissions.
+
+The lifecycle is the epistemic core. The nightly refresher
+\file{scripts/claims-refresh.mjs} re-verifies the mapped claims against the same
+night's artefact and obeys one rule above all others:
+
+\begin{invariant}[The record demotes, it never deletes]
+\label{inv:nodelete}
+A passing eval bumps an established claim's \code{last\_verified}; a failing eval
+marks the parent claim \code{contested} and inserts an auto-generated
+contradiction as the other side of the pair, linked by a \code{contests:} provenance
+id. Nothing on the nightly path is ever deleted. A contested row is not silently
+re-greened by a later pass: only PI review resolves it, and the revision history
+-- including a claim that was once contested and is now superseded -- is part of
+the knowledge, not noise to be cleaned away.
+\end{invariant}
+
+\noindent The WaveQTE divergence is the worked instance of the full lifecycle. A
+2026-02 working paper reports the financial channel dominant in the global
+financial crisis at 50.0\%, while the engine's verified ground truth, the
+published package reproduced to 0.000 pp, gives the trade channel dominant at
+27.9\%. The claim was seeded \emph{contested}, with both sides recorded, then
+\emph{superseded} once the investigation established that the two figures are
+different estimands from different methods on different partitions, not a
+contradiction. The superseded row ships; it is never deleted, and a separate
+established claim records the resolution and links back to it. The claims are
+exposed read-only over the kernel at \route{GET /api/claims} (and
+\route{/api/claims/:id}), so the contested and superseded rows are publicly
+visible and the record fabricates nothing when its backing store is briefly
+unavailable.
+
+\subsection{The formal layer}
+\label{sec:verification-formal}
+
+The thinnest and strictest layer is a formal one. The SOCH element rests on a
+spectral identity: the squared modulus of the cascade transfer function equals a
+product-Lorentzian spectrum. We close that identity in Lean~4 against mathlib, as
+the proposition \code{prop:spectrum},
+\[
+  \Norm{H(\omega)}^{2} = S(\omega),
+\]
+machine-checked unconditionally. The continuous-integration check is a green
+\code{lake build}; the reproduce page greps the Lean source and fails on drift, so
+the public count and the source stay in lockstep. The stationary-point half of the
+companion peak lemma is also fully accepted: the first-order condition is shown
+equivalent to a cubic in $\omega^{2}$, the symmetric peak is located at
+$\omega^{\ast} = \alpha/\sqrt{3}$, and exactly one positive stationary frequency
+is shown to exist and to lie in a stated bracket.
+
+What we will not do is dress the layer as more complete than it is. The analytic
+half of the peak lemma -- that the maximiser of $\omega \, S(\omega)$ exists and
+satisfies the first-order condition -- remains stated, not proved.
+
+\begin{invariant}[A \texttt{sorry} is never reported as a proof]
+\label{inv:sorry}
+The formal layer carries an honest \code{sorry}-count of \textbf{1 of 12}
+declarations. The single open obligation is named and its route is documented in
+the source; it is never presented as closed, and the public count is held to the
+source by the same lockstep check that gates every other figure.
+\end{invariant}
+
+\noindent This is the same posture as the rest of the section, applied to
+machine-checked mathematics rather than to a numerical band. A closed identity is
+reported as closed because a proof assistant accepted it; an open obligation is
+reported as open because none did. The four artefacts -- the failable suite, the
+self-checking loop, the demoting claims record, and the honestly counted proof
+-- are one mechanism seen at four time-scales, and the property they share is the
+one the project exists to demonstrate: every figure the engine states is a figure
+the engine can be seen to fail.

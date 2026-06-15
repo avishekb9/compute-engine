@@ -1,0 +1,123 @@
+% =====================================================================
+%  The Econstellar Compute Engine -- a systems and theoretical reference
+%  Comprehensive manuscript (focused, 35--45 pp). Compile:
+%    pdflatex main && bibtex main && pdflatex main && pdflatex main
+%  House rules: measured voice, British spelling, no em dashes (use --),
+%  every number traces to STYLE_AND_FACTS.md, citations DOI/arXiv-verified.
+% =====================================================================
+\documentclass[11pt]{article}
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{enumitem}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,shapes.geometric,fit,backgrounds,calc}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage[hidelinks]{hyperref}
+
+% ---- palette (Okabe-Ito, colourblind-safe) --------------------------
+\definecolor{ceblue}{HTML}{0072B2}
+\definecolor{ceorange}{HTML}{D55E00}
+\definecolor{cegreen}{HTML}{009E73}
+\definecolor{cegrey}{HTML}{4D4D4D}
+\definecolor{celight}{HTML}{F2F2F2}
+
+% ---- inline macros (writers use ONLY these) -------------------------
+\newcommand{\code}[1]{\texttt{\small #1}}
+\newcommand{\route}[1]{\texttt{\small #1}}
+\newcommand{\method}[1]{\textsf{#1}}
+\newcommand{\file}[1]{\texttt{\small #1}}
+\newcommand{\engine}{Econstellar}
+\newcommand{\Norm}[1]{\lVert #1 \rVert}
+
+% ---- theorem-like environments (no extra package needed) ------------
+\theoremstyle{definition}
+\newtheorem{principle}{Principle}
+\newtheorem{invariant}{Invariant}
+\newtheorem{cexample}{Example}
+\theoremstyle{plain}
+\newtheorem{proposition}{Proposition}
+
+% ---- code listings --------------------------------------------------
+% listings has no built-in JavaScript dialect; define a minimal one.
+\lstdefinelanguage{JavaScript}{
+  keywords={await,async,break,case,catch,const,continue,default,delete,do,else,%
+    export,extends,finally,for,function,if,import,in,instanceof,let,new,of,%
+    return,super,switch,this,throw,try,typeof,var,void,while,yield,true,false,%
+    null,undefined},
+  sensitive=true,
+  comment=[l]{//},
+  morecomment=[s]{/*}{*/},
+  morestring=[b]',
+  morestring=[b]",
+  morestring=[b]`
+}
+\lstdefinestyle{ce}{
+  basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\color{ceblue}\bfseries,
+  commentstyle=\color{cegreen},
+  stringstyle=\color{ceorange},
+  numberstyle=\tiny\color{cegrey},
+  backgroundcolor=\color{celight},
+  frame=single, rulecolor=\color{cegrey!40},
+  breaklines=true, captionpos=b, showstringspaces=false,
+  columns=fullflexible, xleftmargin=1em, framexleftmargin=1em
+}
+\lstset{style=ce}
+
+\hypersetup{pdftitle={The Econstellar Compute Engine},
+            pdfauthor={Avishek Bhandari}}
+
+% absorb hard lines (long ttfamily spans) gracefully rather than overflow margins
+\setlength{\emergencystretch}{3em}
+
+% =====================================================================
+\title{\textbf{The \engine{} Compute Engine}\\[4pt]
+\large A Self-Verifying, Sandboxed Substrate for Reproducible\\
+Financial Econometrics, and the Research Programme It Carries}
+\author{Avishek Bhandari\\
+\small School of Humanities, Social Sciences and Management\\
+\small Indian Institute of Technology Bhubaneswar\\
+\small \texttt{avishekb@iitbbs.ac.in}}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+% --- written at integration; see STYLE_AND_FACTS.md (do not let writers edit) ---
+\input{sections/00-abstract}
+\end{abstract}
+
+\tableofcontents
+\bigskip
+
+\IfFileExists{sections/01-introduction.tex}{\input{sections/01-introduction}}{}
+\IfFileExists{sections/02-architecture.tex}{\input{sections/02-architecture}}{}
+\IfFileExists{sections/03-substrate-methods.tex}{\input{sections/03-substrate-methods}}{}
+\IfFileExists{sections/04-heterogeneous.tex}{\input{sections/04-heterogeneous}}{}
+\IfFileExists{sections/05-ai-layer.tex}{\input{sections/05-ai-layer}}{}
+\IfFileExists{sections/06-verification.tex}{\input{sections/06-verification}}{}
+\IfFileExists{sections/07-elements.tex}{\input{sections/07-elements}}{}
+\IfFileExists{sections/08-deployment-ops.tex}{\input{sections/08-deployment-ops}}{}
+\IfFileExists{sections/09-worked-examples.tex}{\input{sections/09-worked-examples}}{}
+\IfFileExists{sections/10-outlook.tex}{\input{sections/10-outlook}}{}
+
+\appendix
+\IfFileExists{sections/A-registry.tex}{\input{sections/A-registry}}{}
+\IfFileExists{sections/B-api.tex}{\input{sections/B-api}}{}
+\IfFileExists{sections/C-learnings.tex}{\input{sections/C-learnings}}{}
+\IfFileExists{sections/D-results.tex}{\input{sections/D-results}}{}
+
+\bibliographystyle{plainnat}
+\bibliography{refs}
+
+\end{document}

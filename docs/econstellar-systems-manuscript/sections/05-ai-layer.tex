@@ -1,0 +1,134 @@
+\section{The AI layer: a natural-language client, not a privileged path}
+\label{sec:ai-layer}
+
+The engine is reachable in plain language. A researcher can ask a question -- ``is the
+UK equity series stationary?'', ``which market sends the most information to Japan?''
+-- and receive an answer that ran the real econometrics rather than a plausible
+paragraph. Two routes provide this. \route{/api/chat} is a fast analyst backed by
+Gemini 2.5 Flash; \route{/api/research} is a deeper assistant backed by Gemini 2.5 Pro
+that both runs analyses and grounds its synthesis in literature. The design problem
+they pose is not capability but containment: a language model that can trigger compute
+is a new way to reach the engine, and we must be sure it is not a new way to reach
+anything else. The whole of this section is organised around the claim that it is not,
+because the AI layer is a client of the engine on exactly the same footing as a script
+or a web form, with no execution surface of its own.
+
+\subsection{The chat route}
+\label{sec:chat-route}
+
+\route{/api/chat} is a single function-calling turn followed by a summary. The user's
+message goes to Gemini with one tool, \method{run\_analysis}, whose parameters are a
+method name and its typed arguments; the model either answers conceptually with no tool
+call or emits exactly one call. That call is not executed as written. It is passed
+through the same \method{validate} routine every other caller uses -- which rejects an
+unknown method or a mistyped parameter -- and only the validated, cleaned method and
+arguments reach \method{runSandboxed}. The result is then handed back to the model for
+a second turn that explains the numbers in prose. The route returns
+\code{\{reply, ran\}}, where \code{ran} records the method, the cleaned parameters, the
+raw result, and the wall time, so the natural-language answer is always accompanied by
+the machine record it was built from. The system prompt is a careful econometrician,
+not a generic assistant; in particular it carries the stationarity rule discussed
+below, so the model never reports a price level as stationary.
+
+\subsection{The research route}
+\label{sec:research-route}
+
+\route{/api/research} is the same idea at publication depth, and it runs in two phases.
+Phase~A is an agentic loop, bounded to a few steps, in which Gemini 2.5 Pro is given
+the \method{run\_analysis} tool and runs live econometrics wherever the question admits
+it -- it may issue several calls, see their results, and call again, each call passing
+through the same \method{validate} and \method{runSandboxed} path as the chat route.
+Phase~B is a grounded synthesis: the analyses executed in Phase~A are summarised into a
+digest, the digest and the question are sent back to the model with a
+\code{google\_search} tool, and the model writes the final answer grounded in real
+sources. The route returns
+\[
+  \texttt{\{answer,\ citations[],\ searches[],\ analyses[],\ steps\}},
+\]
+so the caller receives the prose answer, the grounding citations (title and URI), the
+search queries the model issued, the full record of every analysis it ran, and the
+step count. The citations are read from the model's grounding metadata, not invented by
+the prose.
+
+The two phases are kept separate for a concrete reason of API behaviour rather than
+preference. Function-calling and \code{google\_search} grounding are not reliably
+combined within one Gemini request, so the engine does not attempt to. Instead it runs
+the tools in their own passes and carries the executed analyses forward as text into
+the grounded pass; the model still cites real literature \emph{and} reasons over real
+live numbers, but the two tool modes never share a single request. This is the kind of
+fragility a systems report should name: the separation is a workaround for a model-API
+constraint, documented in the route itself.
+
+The system prompt for the research route does substantial work, and all of it is fact,
+not flourish. It injects the eight-primitive substrate -- long-memory estimation,
+MODWT wavelet decomposition, transfer entropy, surrogate inference, community
+detection, network-formation game theory, structural attribution, and classifier
+validation -- so the model reasons in the engine's own vocabulary; it names the
+frameworks those primitives instantiate; and it injects the verified-results table
+verbatim with the instruction to quote it exactly and never alter it, so a number the
+model states is a number the engine has checked. It also carries the stationarity rule
+as an inviolable constraint.
+
+\begin{principle}[The stationarity rule]
+\label{prin:stationarity}
+Transfer entropy and the other dependence measures are estimated on $I(0)$ log-returns,
+never on $I(1)$ price levels. Equity price levels carry a unit root (a random walk with
+drift); log-returns, $\mathrm{diff}(\log \text{price})$, are typically stationary. The
+stored G20 panel is already log-returns, so any ``stationary'' verdict over it concerns
+returns, and the model is required to say so explicitly (``UK equity \emph{returns} are
+stationary'', not ``the UK market is stationary''). Embedding this rule in the prompt
+prevents the most common and most consequential error an unguided model would make on
+financial series.
+\end{principle}
+
+\subsection{The safety argument}
+\label{sec:ai-safety}
+
+The reason the AI layer can be exposed at all is that it adds no power. Everything it
+can cause to happen, a direct caller of \route{/api/compute/run} could already cause to
+happen; everything a direct caller cannot do, the AI layer cannot do either. This is
+worth stating precisely, because it is the load-bearing claim of the whole design.
+
+\begin{invariant}[The AI layer is a client, not a privileged path]
+\label{inv:ai-client}
+The model cannot execute arbitrary code. It can only name a method already in the
+registry and supply typed parameters for it, and it can only read that method's
+returned result. Its proposed call is validated by the same \method{validate} routine
+and executed by the same \method{runSandboxed} path as any other request, so it
+inherits every guard those impose and introduces no new execution surface. The
+registry of parameterised methods is the boundary; the language model sits outside it,
+on the same side as a script or a browser.
+\end{invariant}
+
+This follows directly from the implementation. A function call from Gemini is data: a
+method string and an arguments object. It is subjected to \method{validate} before it
+is allowed to mean anything, and \method{validate} is the same gate the public compute
+route uses, so an attempt to name a method that does not exist, or to pass a parameter
+of the wrong type or shape, is rejected before any R process is spawned. There is no
+path by which the model can supply code, a file path, a shell fragment, or a network
+target; the parameterised-only registry that is the engine's primary guard against
+arbitrary execution applies to the model exactly as it applies to everyone else. The
+AI layer widens the engine's audience -- it makes the methods reachable by people who
+would not write the JSON by hand -- without widening its attack surface.
+
+\subsection{Rate limits and the cost bound}
+\label{sec:ai-cost}
+
+Because each model turn costs real money, the AI routes are bounded on several axes, and
+the bound that matters most is a hard ceiling on spend rather than a courtesy throttle.
+The per-IP limiter caps \route{/api/research} at roughly five requests per minute and
+roughly twenty per day, with \route{/api/chat} held to a higher but still bounded rate;
+these stop a single client from monopolising the service or slowly draining the credit.
+Above those sits the ceiling that bounds the worst case regardless of how many clients
+attack at once. Each instance permits at most $400$ paid LLM turns per UTC day, and
+Cloud Run is configured for at most two instances, so the fleet-wide maximum is
+\[
+  400 \ \text{turns/instance/day} \times 2 \ \text{instances}
+  \;=\; \textbf{at most 800 paid turns/day}.
+\]
+The day counter resets at UTC midnight, and when the cap is reached the routes return a
+service-unavailable response with a retry hint rather than paying for another turn. The
+limiter is process-local and resets on restart, which is acceptable precisely because
+the per-instance daily cap multiplied by the instance ceiling already gives a bounded
+fleet-wide daily maximum: the AI layer cannot, under any traffic pattern, spend more
+than that.

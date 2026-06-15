@@ -1,0 +1,275 @@
+\section{The Elements}
+\label{sec:elements}
+
+The engine is the vehicle; the elements are what it carries. Six published
+frameworks have come out of the group, and it would be possible to read each as
+a self-contained study with its own codebase. We read them instead as elements
+of one programme: distinct economic questions, answered by distinct
+configurations of the same eight-primitive substrate, certified by the same
+failable gate, and re-runnable through the same engine. The substrate primitives
+are long-memory estimation, the maximal-overlap discrete wavelet transform
+(MODWT), transfer entropy, surrogate generation by the iterated amplitude-adjusted
+Fourier transform (IAAFT), community detection, network formation, structural
+channel attribution, and receiver-operating-characteristic (ROC) evaluation.
+Each element below states the economic question it asks, the primitives it
+instantiates, its headline verified result, and its honest status. The numbers
+are quoted exactly as the verified record holds them; where a figure is not in
+that record we mark it rather than supply one.
+
+Four of the six elements measure the flow of information between markets, and the
+economics says they should find something to measure. The Grossman--Stiglitz
+argument \citep{grossman1980} implies that informationally efficient markets are
+impossible, so a residue of costly, privately held, unequally distributed
+information must persist; transfer entropy is the programme's instrument for
+tracing the flow of exactly that residue, directionally and across scales. A
+reading caution applies throughout. These markets are adaptive and heterogeneous
+\citep{lo2004}, so a structure measured in one regime need not persist into the
+next, and several elements below report exactly such a dissolution or a
+knife-edge. We treat those as findings, not as failures of the apparatus.
+
+\subsection{NAMH: adaptive market networks}
+\label{sec:elem-namh}
+
+\paragraph{Question.} Do equity markets form a directed information network whose
+broadcasters and receivers can be identified, and is that structure stable as the
+network adapts over two decades? This is the network reading of the adaptive
+markets hypothesis \citep{lo2004}: efficiency as an evolving, relational property
+rather than a fixed one. The economic stake is whether information leadership in
+the global equity system is persistent and locatable, or whether it migrates as
+participants adapt; an answer that holds across twenty years of windows is an
+answer about structure, while one that dissolves is itself a statement about
+adaptation.
+
+\paragraph{Primitives.} Long-memory estimation (a Hurst exponent per market),
+transfer entropy for the directed edges, IAAFT surrogates and false-discovery
+control for edge significance, and network formation with directed centrality
+(out-strength, in-strength, PageRank, Katz, eigenvector) read on the resulting
+graph.
+
+\paragraph{Result.} The FRONTIERS Paper~I treatment, a seventeen-page study over
+twenty-eight assets from 2001 to 2026, finds that the United States broadcasts
+and Japan receives. The United States leads on out-strength in $9$ of $20$
+windows annually and $26$ of $79$ quarterly; Japan receives, leading on
+in-strength in $12$ of $20$ windows, on PageRank in $10$ of $20$, and on Katz
+centrality in $8$ of $20$ \citep{bhandari2026econstellar,namhpkg}. On the engine,
+the NAMH transfer-entropy estimators run through the paper's own \code{namh}
+package: the window-mean transfer entropy is $-0.22322165$, inside its
+pre-registered band, and reproduces against the cached run to a maximum absolute
+deviation of $1.55\times10^{-15}$.
+
+\paragraph{Honest status.} Two honesty markers belong on the record. First, the
+broadcaster/receiver reading carries an exception, stated rather than smoothed:
+the quarterly Katz leader is Argentina with $22$ edges, narrowly over Japan's
+$21$. Second, on the engine the false-discovery-controlled NAMH network is
+degenerate: $0$ of $552$ candidate edges survive the gate, and we report that as
+a degenerate network rather than relaxing the threshold to manufacture structure.
+The headline ranks above are magnitude-ordered centralities; the FDR result is a
+separate, stricter question, and the two are kept distinct.
+
+\subsection{SOCH: scale-ordered contagion}
+\label{sec:elem-soch}
+
+\paragraph{Question.} Does cross-border contagion have a spectral signature, an
+ordering across time scales that reflects how heterogeneous participants adapt to
+information at different horizons? SOCH formalises that ordering and asks whether
+it holds in the data. The economic motivation is that a high-frequency trader and
+a pension fund respond to the same shock on different clocks, so contagion that
+looks alike in aggregate may be ordered by scale once it is decomposed; recovering
+that order distinguishes fast, mechanical transmission from slow, fundamental
+adjustment.
+
+\paragraph{Primitives.} MODWT to resolve a relationship by scale, transfer
+entropy within each scale band for the directed contagion profile, IAAFT
+surrogates for significance, and a spectral-density construction that the formal
+layer machine-checks.
+
+\paragraph{Result.} On the engine the scale-resolved contagion profile from the
+United States to India aggregates to $0.0391$ over four scales, peaking at scale
+\code{d4}, computed through the published \code{sochcontagion} package
+\citep{bhandari2026soch,sochpkg}. The robustness badge holds the baseline cell
+($\tau=0.05$, four filter orders) across all $28$ market pairs and returns an
+overall pass rate of $0.9911$ ($111$ of $112$ grid cells), under a seeded null.
+The spectral theory is supported by a formal layer: of twelve Lean~4
+declarations, eleven are machine-accepted, including the unconditional closure of
+the product-Lorentzian spectral-density proposition,
+$\Norm{H(\omega)}^2 = S(\omega)$.
+
+\paragraph{Honest status.} The framework's three pre-registered significance
+tests do not all clear. SOCH-A is significant at $p=0.042$ and SOCH-B holds
+$28/28$, but \textbf{SOCH-C is not significant, at $p=0.105$}, and we treat that
+as an immutable fact of the record rather than a result to be managed. The formal
+layer is likewise reported as it stands: the single unproved declaration, the
+analytic half of the peak-location lemma, honestly carries a \code{sorry}
+(sorry-count $1/12$), and a \code{sorry} is never reported as proved.
+
+\subsection{Contagion channels}
+\label{sec:elem-channels}
+
+\paragraph{Question.} When contagion crosses a border, through what does it
+travel? The framework identifies and attributes cross-border transmission to
+structural channels (trade, finance, and others) rather than measuring only that
+transmission occurred. The distinction matters for policy: a shock that
+propagates through the trade channel calls for a different response than one
+carried by financial linkages, and an attribution that does not name the channel
+leaves the question that policy actually asks unanswered.
+
+\paragraph{Primitives.} Channel attribution as the central primitive,
+decomposing a transmission measure across structural channels, supported by the
+network and connectedness machinery that supplies the transmission edges and by
+episode partitioning across crises.
+
+\paragraph{Result.} Across eight crisis episodes the framework attributes the
+dominant share of global-financial-crisis contagion to the trade channel at
+$27.9\%$, with an interval of $[26.1, 29.8]$
+\citep{bhandari2026contagion,ccpkg}. On the engine the attribution runs through
+the published \code{contagionchannels} package and reproduces the trade share to
+$0.000$ percentage points against the archived decomposition. This is the cleanest
+reproduction in the programme: the engine's live number equals the paper's to the
+reported precision.
+
+\paragraph{Honest status.} The trade share is a contested figure across method
+and partition, and is carried as such (see WaveQTE below); the engine's
+contribution is to make the canonical $27.9\%$ re-runnable to the digit, not to
+adjudicate the contest.
+
+\subsection{WaveQTE: wavelet quantile transfer}
+\label{sec:elem-waveqte}
+
+\paragraph{Question.} How does tail risk transfer between markets across both
+time scale and quantile, and how much of an episode's contagion does a
+wavelet-quantile reading attribute to a given channel? The economic interest is
+in the tails specifically: ordinary co-movement and crisis co-movement are
+different objects, and a method resolved by quantile asks how transmission behaves
+when it matters most rather than on average.
+
+\paragraph{Primitives.} MODWT for the scale resolution and quantile transfer
+estimation for the tail-dependent directed flow, with the same surrogate and
+network primitives downstream.
+
+\paragraph{Result.} A wavelet-quantile reading attributes $50.0\%$ of the
+relevant episode's contagion where the structural channel decomposition of
+Section~\ref{sec:elem-channels} attributes $27.9\%$. On the engine, the
+\code{wqte} method returns a United-States-to-India quantile transfer of $0.039$
+at $\tau=0.05$, an aggregate that sits inside its pre-registered band.
+
+\paragraph{Honest status.} The $50.0\%$-versus-$27.9\%$ gap was investigated and
+resolved, and the resolution is itself the finding: \textbf{it is a
+method-and-partition divergence, not a bug.} The two figures come from different
+estimators (a wavelet-quantile activation-scoring reading against a structural
+instrumental-variables decomposition) over different episode partitions, so they
+are measuring related but distinct quantities and are expected to differ. One
+further honesty marker: the framework's packaged Stage-1 estimator is
+structurally unavailable inside the deployed image, so the engine's \code{wqte}
+is an honest MODWT-plus-quantile-regression reimplementation, declared as such,
+rather than a call into the original Stage-1 code. It is banded like any other
+method and is not presented as the packaged estimator.
+
+\subsection{Commodity systems}
+\label{sec:elem-commodity}
+
+\paragraph{Question.} How does the commodity complex fragment and re-form across
+crises, and which episode leaves it most fragmented? The object is the network of
+commodities itself, read as a system that reorganises under stress. The economic
+content is the integration of the commodity complex: a complex that fragments
+under a crisis offers diversification exactly when other markets are
+co-moving, so locating the deepest fragmentation locates the episode in which the
+complex behaved least like a single asset.
+
+\paragraph{Primitives.} Network formation over the commodity cross-section,
+community detection to recover the cluster structure, and a fragmentation measure
+read across crisis episodes.
+
+\paragraph{Result.} Over twenty-three commodities from 1991 to 2025, the Subprime
+crisis leaves the complex most fragmented, with a fragmentation coefficient of
+magnitude $\Norm{\text{FC}} = 0.290$ and a partition into five communities. The
+finding is that the deepest fragmentation of the commodity network in this sample
+sits at the Subprime episode rather than at a later crisis.
+
+\paragraph{Honest status.} The fragmentation magnitude and community count are
+the verified figures; finer claims about which commodities migrate between
+communities are governed by the published study's own community-structure record
+and are not restated here beyond what the verified record holds. Where a
+cross-episode comparison would need per-episode fragmentation coefficients beyond
+the Subprime magnitude, figures the verified record does not carry, we leave them
+unstated rather than assert them.
+
+\subsection{MCPFM: protocol-mediated systemic risk}
+\label{sec:elem-mcpfm}
+
+\paragraph{Question.} Can a protocol-mediated, multi-scale network model of the
+financial system forecast systemic-risk episodes, and does that forecasting
+ability survive a pre-registered re-evaluation? This is the element where the
+programme tests one of its own models against an out-of-sample, honestly scored
+benchmark. The economic claim under test is strong, that network structure
+carries predictive content about systemic stress, and the value of testing it
+under pre-registration is precisely that the apparatus cannot quietly retreat to
+the sample and episode where the claim looks best.
+
+\paragraph{Primitives.} The full network and connectedness stack feeding a
+multi-scale systemic-risk construction, with ROC evaluation as the primitive that
+scores the forecasts, here read through the area under the curve and a formal
+test of predictive superiority.
+
+\paragraph{Result.} In its first evaluation the model returns an area under the
+ROC curve of $0.581$ (DeLong $p=0.030$) over the full sample, rising to $0.915$
+on the United States during the COVID episode \citep{bhandari2025mcpfm}. A
+\emph{pre-registered} second-version re-evaluation then returns an area under the
+curve of $0.470$ with a Hansen superior-predictive-ability $p=0.031$, and is
+reported openly.
+
+\paragraph{Honest status.} This is the programme's sharpest negative.
+\textbf{The pre-registered v2 re-evaluation returns AUC $0.470$}, below the $0.5$
+chance line, and we report it as such rather than retreating to the favourable v1
+figures. The pre-registration is what gives the negative its force: the test was
+fixed before the run, so a result below chance is a result, not a discard. The
+reproduction status of the systemic-risk index is carried as honest-pending,
+consistent with the rest of the programme's reproduce discipline.
+
+\subsection{Cross-framework consistency}
+\label{sec:elem-consistency}
+
+Read together, the six elements are not six tools but six configurations of one
+substrate, and that is the claim the engine makes good. The same long-memory
+estimator that gives NAMH its per-market Hurst exponents is the estimator the
+engine bands as \code{namh\_hurst}; the same KSG/Frenzel--Pompe transfer-entropy
+kernel supplies NAMH's directed edges, SOCH's within-scale contagion, and the
+engine's headline United-States-to-Japan flow of $0.154234$; the same MODWT
+resolves SOCH and WaveQTE by scale; the same IAAFT surrogates and false-discovery
+control gate significance across NAMH, SOCH, and WaveQTE; the same network and
+community-detection machinery recovers structure for NAMH, the commodity complex,
+and MCPFM; and the same channel-attribution primitive that the contagion-channels
+element reproduces to $0.000$ percentage points is the one whose method-dependence
+the WaveQTE divergence illustrates. Verifying a primitive therefore verifies it
+for every element that instantiates it, which is the economy the programme
+framing is meant to buy: twenty-six checked methods carrying six frameworks,
+rather than six codebases asserting their own numbers in parallel.
+
+Table~\ref{tab:elements-matrix} lays the six elements against the eight primitives.
+The filled columns for transfer entropy and network connectedness show how few
+independent estimators carry the whole programme.
+
+\begin{table}[t]
+\centering
+\small
+\setlength{\tabcolsep}{4.5pt}
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{@{}l*{8}{c}l@{}}
+\toprule
+\textbf{Element} & P1 & P2 & P3 & P4 & P5 & P6 & P7 & P8 & \textbf{Headline (verified)} \\
+\midrule
+NAMH & \textcolor{ceblue}{\textbullet} & & \textcolor{ceblue}{\textbullet} & \textcolor{ceblue}{\textbullet} & \textcolor{ceblue}{\textbullet} & \textcolor{ceblue}{\textbullet} & & & US out-strength 9/20 \\
+SOCH & & \textcolor{ceblue}{\textbullet} & \textcolor{ceblue}{\textbullet} & & & & & & SOCH-C $p=0.105$ (n.s.) \\
+contagion-channels & & \textcolor{ceblue}{\textbullet} & \textcolor{ceblue}{\textbullet} & & \textcolor{ceblue}{\textbullet} & & \textcolor{ceblue}{\textbullet} & & trade $27.9\%$ \\
+WaveQTE & & \textcolor{ceblue}{\textbullet} & \textcolor{ceblue}{\textbullet} & \textcolor{ceblue}{\textbullet} & & & & & \code{wqte} $0.039$ \\
+commodity & & & \textcolor{ceblue}{\textbullet} & & \textcolor{ceblue}{\textbullet} & \textcolor{ceblue}{\textbullet} & & & $|FC|\;0.290$ \\
+MCPFM & & \textcolor{ceblue}{\textbullet} & & & & \textcolor{ceblue}{\textbullet} & & \textcolor{ceblue}{\textbullet} & v2 AUC $0.470$ \\
+\bottomrule
+\end{tabular}
+\caption{The six elements against the eight substrate primitives: P1 long memory,
+P2 MODWT wavelets, P3 transfer entropy, P4 surrogates, P5 community detection,
+P6 network connectedness, P7 channel attribution, P8 ROC/DeLong. A marker
+indicates the element instantiates that primitive (the principal-primitive view
+of Figure~\ref{fig:substrate}); the final column gives one headline verified
+figure per element, positive and negative alike.}
+\label{tab:elements-matrix}
+\end{table}

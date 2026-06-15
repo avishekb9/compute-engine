@@ -1,0 +1,95 @@
+\section{API reference}
+\label{app:api}
+
+The engine presents two HTTP surfaces: the synchronous kernel
+(\file{server/compute-server.mjs}, on Cloud Run) and the asynchronous tower
+(\file{server/job-server.mjs}, on the workstation, port 3030). Both speak the
+same data contract: one JSON object in, one JSON object out, with no path by
+which a caller supplies code rather than a method name and typed parameters. The
+static read surfaces only ever \emph{read} these routes; they never compute.
+
+\subsection*{Kernel routes (synchronous)}
+
+CORS is open for the static read-side pages. The two language-model routes share
+a daily budget; over cap they return \code{503 daily\_capacity} with a reset
+hint, never a fabricated answer.
+
+\renewcommand{\arraystretch}{1.2}
+\small
+\begin{longtable}{@{}p{4.5cm}p{1.2cm}p{6.4cm}p{1.8cm}@{}}
+\toprule
+\textbf{Route} & \textbf{Verb} & \textbf{Purpose} & \textbf{Cap} \\
+\midrule
+\endhead
+\code{/api/compute/run} & POST & run one registry method on schema-validated params & 20/min \\
+\code{/api/compute/catalog} & GET & the method $+$ dataset registry the workbench binds to & -- \\
+\code{/api/chat} & POST & AI analyst: Gemini 2.5 function-calling over the registry & 10/min, 50/day \\
+\code{/api/research} & POST & deep-research assistant (agentic run $+$ grounded synthesis) & 5/min, 20/day \\
+\code{/api/situate} & POST & place a result against the verified record & 30/min \\
+\code{/api/claims} & GET & epistemic ledger (established / contested / superseded) & -- \\
+\code{/api/sri/current} & GET & systemic-risk live-feed: latest value & -- \\
+\code{/api/sri/history} & GET & systemic-risk live-feed: series & -- \\
+\code{/api/sri/network} & GET & systemic-risk live-feed: current network & -- \\
+\code{/api/sri/cron-tick} & POST & the daily SRI append (Cloud Scheduler only) & -- \\
+\code{/api/event} & POST & read-side telemetry & 60/min \\
+\code{/health} & GET & liveness: methods, revision, sandbox, timeout & -- \\
+\code{/metrics} & GET & counters & -- \\
+\bottomrule
+\end{longtable}
+\normalsize
+\renewcommand{\arraystretch}{1.0}
+
+\subsection*{The compute contract}
+
+A run names a method and a schema-validated parameter object. Schema validation
+rejects anything that is not a registered method or whose parameters fail their
+typed checks before any process is spawned.
+
+\begin{lstlisting}[language=bash,caption={A synchronous method call and its single-JSON reply.}]
+POST /api/compute/run
+{ "method": "ksg_te", "params": { "lag": 1, "k": 4 } }
+
+200 OK
+{ "method": "ksg_te",
+  "result": { "top_edge": "USA->Japan", "te": 0.154234,
+              "n_pairs": 306, "n_significant": 108 },
+  "compute_path": "gpu", "elapsed_s": 2136.4,
+  "data_sha256": "..." }
+\end{lstlisting}
+
+\noindent
+The reply carries a \code{compute\_path} field (\code{gpu} or \code{cpu}) and the
+SHA-256 of the input panel, so a number always carries its data state. A method
+that exceeds \code{COMPUTE\_TIMEOUT\_S} (90~s in the deployed image) returns an
+explicit \code{timeout after Ns} error, never a silent hang.
+
+\subsection*{Tower routes (asynchronous)}
+
+The four heavy methods (\code{ksg\_te}, \code{ksg\_robustness},
+\code{namh\_pipeline}, \code{soch\_robustness}) are submitted to the tower, which
+returns a job id immediately and runs the work at a small fixed concurrency
+(\code{MAX\_CONCURRENT}~$=2$). The contract is specified in
+\file{openapi/jobs.yaml}.
+
+\renewcommand{\arraystretch}{1.2}
+\small
+\begin{longtable}{@{}p{5.2cm}p{1.2cm}p{7.2cm}@{}}
+\toprule
+\textbf{Route} & \textbf{Verb} & \textbf{Purpose} \\
+\midrule
+\endhead
+\code{/api/jobs/submit} & POST & workspace-gated submit; returns \code{job\_<date>\_<hash>} \\
+\code{/api/jobs/:id} & GET & job status and, on completion, the result object \\
+\code{/api/jobs/:id/stream} & GET & server-sent-events progress stream \\
+\bottomrule
+\end{longtable}
+\normalsize
+\renewcommand{\arraystretch}{1.0}
+
+\noindent
+Jobs persist to \code{.jobs/} on disk with a thirty-day time-to-live, so a result
+survives a restart of the tower process. Progress events are emitted by the R
+runners through \code{ce\_progress()} only when the environment sets
+\code{CE\_PROGRESS=1}, so the synchronous kernel's pure-single-JSON stdout is
+never polluted by progress lines. The kernel and the dashboard poll
+\code{/api/jobs/:id} for completion.

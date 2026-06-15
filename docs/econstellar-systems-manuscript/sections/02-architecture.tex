@@ -1,0 +1,376 @@
+\section{System Architecture}
+\label{sec:architecture}
+
+The engine has one job: run a fixed catalogue of econometric methods, return each
+result as structured data, and attach enough provenance that the number can be
+banded against an expectation and reproduced later. Everything in this section
+follows from a single decision -- that a caller may name a method and supply
+parameters, but may never supply code. That decision is what makes the engine safe
+to expose publicly, and it is what lets the same method run identically in a cloud
+container, on the laboratory workstation, and in the test harness.
+
+We organise the system into three planes, each chosen for a different operational
+regime. The \emph{kernel} answers synchronous requests on scale-to-zero Cloud Run,
+which suits bursty, low-volume research traffic at near-zero idle cost. The
+\emph{tower} carries the heavy asynchronous estimators that a request-scoped cloud
+service cannot, on an always-on workstation with governed cores and a GPU. The
+\emph{surfaces} are static pages that render only what the evaluation suite has
+verified, so the read side computes nothing and can never present an unchecked
+figure. Figure~\ref{fig:three-planes} sketches the topology.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[font=\small,
+  box/.style={draw=cegrey, thick, rounded corners=2pt, align=center, inner sep=5pt},
+  lbl/.style={font=\footnotesize\itshape, text=cegrey},
+  flow/.style={-{Stealth[length=2.4mm]}, thick, draw=cegrey}]
+  \node[box, fill=ceblue!12, text width=10.6cm] (read) at (0,2.5)
+    {\textbf{Surfaces} \,\textnormal{(static GitHub Pages)}\\[1pt]
+     \footnotesize research dashboard $\cdot$ \file{evals.html} $\cdot$ \file{reproduce.html} $\cdot$ \file{claims.html} $\cdot$ gallery\\
+     \footnotesize render \file{evals.json} -- no compute on the read side};
+  \node[box, fill=cegreen!14, text width=4.6cm] (kernel) at (-3.2,0)
+    {\textbf{Kernel}\\[1pt]
+     \footnotesize \file{compute-server.mjs}\\
+     \footnotesize Cloud Run \textit{shssm-compute}\\
+     \footnotesize sync methods, \route{/api/chat},\\ \route{/api/claims}, \route{/health}};
+  \node[box, fill=ceorange!14, text width=4.9cm] (tower) at (3.2,0)
+    {\textbf{Tower}\\[1pt]
+     \footnotesize \file{job-server.mjs} :3030\\
+     \footnotesize always-on workstation, \code{MAX\_CONCURRENT}=2\\
+     \footnotesize 4 heavy async methods\\ \footnotesize governed cores + GPU};
+  \node[lbl, below=2pt of kernel] {scale-to-zero};
+  \node[lbl, below=2pt of tower] {always-on};
+  \draw[flow, dashed] (read.south) -- (kernel.north)
+    node[midway, sloped, above, font=\footnotesize] {fetch (read-only)};
+  \draw[flow, {Stealth[length=2.4mm]}-{Stealth[length=2.4mm]}] (kernel.east) -- (tower.west)
+    node[midway, above, font=\footnotesize] {submit / poll};
+\end{tikzpicture}
+\caption{The three planes. The read side fetches but never computes; the kernel
+serves synchronous methods and submits heavy work to the tower.}
+\label{fig:three-planes}
+\end{figure}
+
+\subsection{The kernel: synchronous methods on scale-to-zero Cloud Run}
+\label{sec:kernel}
+
+The kernel is \file{server/compute-server.mjs}, a zero-dependency Node service that
+needs only \code{node:http}, \code{node:https}, \code{node:child\_process} and
+\code{node:fs}. It is deployed to Google Cloud Run as the service
+\code{shssm-compute} in region \code{asia-south1}; the live release is revision
+\code{shssm-compute-00036-llf}, re-confirmed on 2026-06-15 serving a 26-method
+registry. A liveness probe reports the running configuration directly:
+\route{GET /health} returns
+\code{\{ok:true, methods:26, revision:"shssm-compute-00036-llf",
+sandbox:"timeout", timeout\_s:90\}}. The same code runs locally on port
+\code{3200} for development.
+
+Cloud Run scales the kernel to zero between requests. For a research service whose
+traffic is occasional and bursty -- a workbench query here, a chatbot turn there --
+this is the right trade: we pay for compute only while a request is in flight, and
+a cold start is acceptable latency for an interactive analysis. The cost of that
+choice is the request budget. Cloud Run bounds a request at 300\,s and may throttle
+CPU outside an active request, so any estimator whose honest runtime is measured in
+minutes cannot live on the synchronous path. Those estimators are the tower's
+(Section~\ref{sec:tower}); the kernel carries the rest, which return in well under
+the timeout.
+
+The kernel's public surface is a small, rate-limited JSON API. CORS is open so the
+static read-side pages can fetch it, but those pages only ever read; nothing on the
+read side mutates engine state. Table~\ref{tab:kernel-surface} reproduces the
+routes. The two model-backed routes, \route{/api/chat} and \route{/api/research},
+share a per-instance daily budget and, over cap, return \code{503 daily\_capacity}
+with a reset hint rather than a fabricated answer; that budget and its cost ceiling
+are treated in Section~\ref{sec:deployment-ops}.
+
+\begin{table}[t]
+\centering
+\small
+\caption{The kernel HTTP surface (\file{server/compute-server.mjs}). Read-side
+pages only ever consume these routes; the per-minute and per-day caps are the
+abuse and credit guards of Section~\ref{sec:deployment-ops}.}
+\label{tab:kernel-surface}
+\begin{tabular}{@{}p{3.5cm}l p{7.4cm} l@{}}
+\toprule
+Route & Method & Purpose & Cap \\
+\midrule
+\route{/api/compute/run}     & POST & run one registry method on validated params      & 20/min \\
+\route{/api/compute/catalog} & GET  & method + dataset registry the workbench binds to  & -- \\
+\route{/api/chat}            & POST & AI analyst (Gemini function-calling over registry) & 10/min, 50/day \\
+\route{/api/research}        & POST & deep-research assistant (agentic + grounded)       & 5/min, 20/day \\
+\route{/api/situate}         & POST & place a result against the verified record         & 30/min \\
+\route{/api/claims}          & GET  & epistemic ledger (established / contested / superseded) & -- \\
+\route{/api/sri/current}     & GET  & systemic-risk live-feed: latest value              & -- \\
+\route{/api/sri/history}     & GET  & systemic-risk live-feed: time series               & -- \\
+\route{/api/sri/network}     & GET  & systemic-risk live-feed: directed edges            & -- \\
+\route{/api/sri/cron-tick}   & POST & the daily SRI append (Cloud Scheduler only)        & -- \\
+\route{/api/event}           & POST & read-side telemetry (aggregate counts, no PII)     & 60/min \\
+\route{/health}              & GET  & liveness: methods, revision, sandbox               & -- \\
+\route{/metrics}             & GET  & request / cache / rate-limit counters             & -- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{The tower: heavy asynchronous estimators on an always-on workstation}
+\label{sec:tower}
+
+Four methods cannot live on the synchronous path, because their honest runtimes
+exceed what a scale-to-zero, request-scoped service can carry: \method{ksg\_te}
+(exact KSG/Frenzel--Pompe transfer entropy with IAAFT surrogates across all
+directed pairs), \method{ksg\_robustness} (its nuisance-grid sweep),
+\method{namh\_pipeline} (the end-to-end NAMH estimation, roughly 24 minutes at
+$B=200$), and \method{soch\_robustness} (a bootstrap symmetry-test grid). These run
+on the tower, \file{server/job-server.mjs}, an always-on service on port
+\code{3030} on the group's 22-core workstation, which also carries the GPU used to
+offload the transfer-entropy search (treated in the heterogeneous-compute section).
+
+The tower inverts the kernel's request model. \route{POST /api/jobs/submit}
+validates the method and returns a \code{job\_<date>\_<hash>} id immediately with
+\code{202 Accepted}; the work then runs asynchronously at a small fixed concurrency
+(\code{MAX\_CONCURRENT = 2}). A caller polls \route{GET /api/jobs/\{id\}} for the
+record, or subscribes to \route{GET /api/jobs/\{id\}/stream}, a Server-Sent-Events
+channel that emits \code{progress} events and terminates on \code{done} or
+\code{error}. The progress events are exactly the \code{CE\_PROGRESS}-gated lines of
+Section~\ref{sec:json-contract}: the tower spawns the same runner with
+\code{CE\_PROGRESS=1}, parses each newline-delimited progress object to update the
+job, and keeps the final unterminated object as the result.
+
+Job state persists to disk. Every job record is written to \file{.jobs/} as a JSON
+file on each transition, so the tower survives a restart: on boot it re-reads
+\file{.jobs/}, and any job left \code{running} or \code{queued} is re-queued rather
+than lost. Crucially, the tower is also where core governance lives -- it sets a
+hard per-job core ceiling and pins the numerical libraries to a single thread each
+before spawning R, so two concurrent jobs cannot oversubscribe the machine. That
+mechanism, and the 22-core saturation it fixed, are the subject of the
+heterogeneous-compute section; here it suffices that the budget is set by the plane
+that owns concurrency.
+
+\subsection{The surfaces: render only what is verified}
+\label{sec:surfaces}
+
+The third plane is the read side: static GitHub Pages in the sibling
+\code{econstellar/} checkout -- the research dashboard, the evaluation and
+reproduction pages, the claims panel, the gallery. Nothing on the read side
+computes. Each page fetches and renders \file{evals.json}, the single
+machine-written artefact of one genuine run of the public evaluation suite, and the
+kernel's read-only routes (\route{/api/claims}, the SRI feed). A figure appears on a
+surface only because the suite produced it under a pre-registered, failable band; a
+regression turns the dashboard red rather than passing silently.
+
+\begin{principle}[Render only what is verified]
+\label{prin:render-verified}
+The read surfaces display \file{evals.json} and the kernel's read routes; they
+execute no analysis of their own. A number reaches a reader only after the
+evaluation suite has produced it and checked it against a band fixed before the run.
+The read side cannot present an unchecked figure because it cannot compute one.
+\end{principle}
+
+This is the architectural counterpart of the catalogue discipline. The kernel will
+not run a method that is not registered; the surfaces will not show a result that
+the suite has not verified. The separation also keeps the planes honest about cost
+and blast radius: the read side is free static hosting that can fail closed, the
+kernel pays only while computing, and the heavy machine is reached only through a
+job submission that the kernel itself gates.
+
+\subsection{The request lifecycle}
+\label{sec:lifecycle}
+
+Every synchronous analysis follows one path, and the path is the same whether the
+caller is the workbench, the chatbot, or the test harness. We trace it concretely
+for \route{POST /api/compute/run}.
+
+\begin{enumerate}[leftmargin=2em,itemsep=2pt]
+\item \textbf{Receive.} The body is read with a 64\,KB cap; an oversized body is
+  rejected with \code{413} before parsing, so no request can fan out into unbounded
+  memory. A malformed body returns \code{400 bad JSON body}.
+\item \textbf{Validate.} \code{validate(method, params)} looks the method up in the
+  fixed registry. An unknown name returns \code{400 unknown method}. Each declared
+  parameter is then coerced and checked against its typed schema (Section~%
+  \ref{sec:registry-guard}); a market name not in the panel's whitelist is rejected
+  as \code{unknown series}. What reaches R is a \emph{clean} parameter object, never
+  the raw request.
+\item \textbf{Route by kind.} If the method is flagged \code{long\_running} it is
+  refused here with \code{\{error:"...background job...", async:true\}} and directed
+  to the tower; the synchronous endpoint never spawns a heavy estimator.
+\item \textbf{Cache.} A 5-minute response cache, keyed on method and cleaned
+  parameters, short-circuits repeated identical analyses. Errors are never cached.
+\item \textbf{Spawn.} On a cache miss the kernel builds the runner argument vector
+  and spawns the registered script under the sandbox (Section~\ref{sec:sandbox}):
+  \code{Rscript r/<script>.R '<params-json>'}, wrapped in \code{timeout}. The R
+  helper reads exactly the whitelisted dataset and computes.
+\item \textbf{Collect.} The child's \code{stdout} is accumulated and parsed as a
+  single JSON object (Section~\ref{sec:json-contract}). A \code{124} exit is
+  surfaced as an explicit \code{timeout after Ns} error, never a silent hang; a
+  non-JSON stdout is reported as such rather than passed through.
+\item \textbf{Respond.} The result is wrapped with a provenance stamp -- method
+  version, engine revision, cleaned parameters, panel id and byte-hash, timestamp,
+  and a permalink that re-runs the exact analysis on load -- and returned.
+\end{enumerate}
+
+\begin{figure}[t]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[font=\footnotesize, node distance=6mm,
+  st/.style={draw=cegrey, thick, rounded corners=2pt, fill=celight, align=center,
+    inner sep=4pt, minimum height=9mm, text width=1.75cm},
+  ar/.style={-{Stealth[length=2mm]}, thick, draw=cegrey}]
+  \node[st] (req) {HTTP\\request};
+  \node[st, right=of req] (guard) {size\\guard};
+  \node[st, right=of guard] (val) {validate vs.\\registry};
+  \node[st, right=of val] (disp) {sync /\\async?};
+  \node[st, right=of disp] (spawn) {sandbox\\$+$ \file{Rscript}};
+  \node[st, right=of spawn] (json) {single-JSON\\$+$ provenance};
+  \node[st, right=of json] (resp) {response};
+  \foreach \a/\b in {req/guard, guard/val, val/disp, disp/spawn, spawn/json, json/resp}
+    \draw[ar] (\a) -- (\b);
+  \node[st, below=8mm of disp, fill=ceorange!14, text width=1.9cm] (tower) {tower job (async)};
+  \draw[ar] (disp) -- (tower);
+  \node[font=\scriptsize, text=ceorange, below=0.5mm of val.south] {400 unknown};
+  \node[font=\scriptsize, text=ceorange, below=0.5mm of spawn.south] {124 $=$ timeout};
+\end{tikzpicture}}
+\caption{The synchronous request lifecycle. Validation against the registry
+precedes any spawn; a method flagged long-running is refused synchronous service
+and submitted to the tower; a wall-clock timeout surfaces as an explicit error,
+never a silent hang.}
+\label{fig:lifecycle}
+\end{figure}
+
+Listing~\ref{lst:lifecycle} states the same path as pseudocode, to make the
+ordering of the guards unambiguous: validation precedes any spawn, and the registry
+lookup is the only thing that turns a request name into an executable.
+
+\begin{lstlisting}[language=JavaScript,caption={The synchronous request path, in
+brief. Validation and registry lookup precede every spawn; the runner receives a
+cleaned parameter object, never caller-supplied code.},label={lst:lifecycle}]
+// POST /api/compute/run  (server/compute-server.mjs)
+if (bodyBytes > 64*1024)        return send(413);          // size guard
+let payload = JSON.parse(body);                            // 400 on bad JSON
+let { method, clean } = validate(payload.method,           // 400 unknown method
+                                 payload.params);          // typed-param coercion
+if (method.long_running)        return send(400, async);   // -> tower, never here
+let hit = cacheGet(method, clean);                         // 5-min TTL
+let result = hit
+  || await runSandboxed(method, buildArgsJson(method, clean));
+return send(200, { ...result,
+                   provenance: stamp(method, clean) });    // version+revision+hash
+\end{lstlisting}
+
+\subsection{The registry as the primary safety property}
+\label{sec:registry-guard}
+
+The central design fact is that the registry is parameterised only. A method entry
+is a fixed runner script plus a typed parameter schema -- for example, the
+stationarity method binds \code{r/adf.R} with a \code{series} parameter that must be
+exactly one market drawn from the panel's whitelist. The runner scripts in
+\file{r/} are part of the repository and are never user-supplied. A caller therefore
+chooses \emph{which} registered analysis to run and supplies typed inputs to it, but
+has no channel through which to inject code, a file path, or a shell fragment.
+
+\begin{invariant}[Parameterised-only execution]
+\label{inv:no-rce}
+The only executables the engine ever runs are the registered runner scripts shipped
+in the repository. A request supplies a method name from a closed registry and a
+parameter object validated against that method's typed schema. No request input is
+interpreted as code, a path, or a command. There is therefore no
+arbitrary-code-execution surface, independent of any sandbox.
+\end{invariant}
+
+This is the load-bearing claim, and it is worth being precise about why. The
+validation step (Section~\ref{sec:lifecycle}) coerces each parameter to its declared
+type and rejects anything outside its domain: series names are checked against the
+dataset whitelist, integers and numbers must parse finitely, enumerations must match
+a fixed value set, and counts must fall in the method's declared arity. A string that
+is not a registered method name does not select a default; it is refused. A probe
+such as \code{"DROP\_TABLE; rm -rf /"} as a method name returns \code{400 unknown
+method} and reaches no shell. The safety of the public endpoint rests here, on
+Invariant~\ref{inv:no-rce}, not on the sandbox.
+
+The sandbox is defence in depth, and we are careful not to overstate it
+(Section~\ref{sec:sandbox}). Stating the property in the order it actually holds --
+registry first, sandbox second -- matters because the two deployments run different
+sandbox modes, and the safety argument must not depend on which one is live.
+
+\subsection{The sandbox, stated precisely}
+\label{sec:sandbox}
+
+The runner is launched by one function, \code{runSandboxed}, which detects whether
+\code{bwrap} (bubblewrap) is present and adapts.
+
+On the workstation and in local development, where \code{bwrap} is installed, each
+analysis runs under bubblewrap with the whole filesystem read-only
+(\code{-{}-ro-bind / /}), no network (\code{-{}-unshare-net}, verified to block
+outbound), a fresh \code{tmpfs} scratch, and \code{-{}-die-with-parent}, the whole
+wrapped in \code{timeout}. The deployed Cloud Run image, by contrast, ships
+\emph{without} \code{bwrap}. There the kernel runs in \code{timeout}-only mode --
+which is exactly what \route{/health} reports as \code{sandbox:"timeout"} -- and the
+isolation boundary is gVisor, the sandbox Cloud Run already places around the
+container, together with the read-only image and Cloud Run's own egress posture. We
+do \emph{not} claim that \code{bwrap} runs in production; it does not. On Cloud Run,
+the kernel boundary is gVisor and a wall-clock timeout bounds each call, while the
+no-arbitrary-code guarantee comes from Invariant~\ref{inv:no-rce}, which holds
+identically in both modes.
+
+\begin{principle}[Defence in depth, not in place of the registry]
+\label{prin:depth}
+The sandbox narrows what a misbehaving runner could touch; it is not the reason the
+public endpoint is safe to expose. That reason is the parameterised-only registry.
+Where \code{bwrap} is present we additionally pin the filesystem read-only and the
+network off; where it is not, gVisor and a per-call timeout provide the kernel
+boundary. The safety claim is invariant to which mode is live.
+\end{principle}
+
+Either way, one method call is bounded by \code{COMPUTE\_TIMEOUT\_S} -- 90\,s in the
+deployed image, default 60\,s -- and a timeout is surfaced as an explicit error, so
+a pathological input degrades to a clean \code{timeout after Ns}, never an unbounded
+run.
+
+\subsection{The JSON contract and the purity of stdout}
+\label{sec:json-contract}
+
+The data contract is deliberately minimal: one JSON object in, one JSON object out.
+A request carries \code{\{method, params\}}; a runner prints exactly one JSON object
+to \code{stdout} and exits. This single discipline is what lets a method run
+identically across the three planes -- the cloud container, the workstation, and the
+harness all spawn the same script and parse the same object. The R helpers in
+\file{r/\_io.R} centralise emission through one function, \code{ce\_emit}, which
+serialises the result and quits; failures emit \code{\{error: ...\}} through
+\code{ce\_fail}.
+
+The fragility this guards against is real. R routinely writes to \code{stdout} for
+reasons unrelated to the result -- a warning that a KPSS p-value lies beyond the
+tabulated range, a package's registration notice on load. Any such stray line would
+be concatenated with the JSON and break the parse. The helpers therefore set
+\code{options(warn = -1)} and suppress load messages, so that the only thing on
+\code{stdout} is the result object.
+
+Progress reporting is the interesting case, because the heavy tower estimators
+genuinely need to stream progress, yet the kernel's stdout must stay pure. The
+engine resolves this with a single environment gate. The helper \code{ce\_progress}
+emits a newline-terminated progress line \emph{only} when the async worker has set
+\code{CE\_PROGRESS=1}; under the synchronous kernel that variable is unset, so
+\code{ce\_progress} is a silent no-op and the pure-single-JSON contract of
+\route{/api/compute/run} is unchanged. The tower (Section~\ref{sec:tower}) sets
+\code{CE\_PROGRESS=1}, reads the newline-delimited progress lines to drive its
+event stream, and treats the final unterminated object as the result. The same
+runner thus serves both planes without a branch in its own logic.
+
+\subsection{The data plane}
+\label{sec:data-plane}
+
+The primary stored panel is \file{papers/contagion-channels/data/G20.xlsx}: daily
+equity log-returns for 18 markets spanning 2006-01-12 to 2026-03-18, which yields
+$18 \times 17 = 306$ directed market pairs for the information-flow methods. Transfer
+entropy is computed on log-returns, which are $I(0)$, never on price levels, which
+are $I(1)$; the stationarity gate is enforced rather than assumed. A second panel,
+\code{g20\_24}, supplies the 24-series set used by the NAMH methods (19 equity
+indices plus five commodity futures), read from the published \code{namh} package's
+bundled data so that the cloud image and the workstation see byte-identical inputs.
+
+Both panels are byte-hashed with SHA-256 at kernel and tower startup, and the hash
+travels with the result in its provenance stamp. A reported figure therefore names
+the exact data state it was computed against, which is what makes a later
+reproduction meaningful: the panel is identified not by a filename but by the hash
+of its bytes. Datasets that are planned but not provisioned -- an intraday G20 panel,
+for instance -- are present in the registry as honest placeholders with no series
+list, so \code{validate} refuses any analysis against them rather than fabricating a
+result. This is the data-plane expression of the same discipline that governs the
+method catalogue: a capability is exposed only when it is real.

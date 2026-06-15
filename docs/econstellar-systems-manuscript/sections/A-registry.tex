@@ -1,0 +1,88 @@
+\section{The method registry}
+\label{app:registry}
+
+This appendix reproduces the canonical registry of \textbf{twenty-six methods},
+grouped into six families, exactly as the committed evaluation runner
+\file{econstellar/evals/run-evals.mjs} carries them. For each method we give the
+verified figure recorded by the most recent full suite (2026-06-12), the
+pre-registered acceptance band or check, and the methodological basis. The bands
+are fixed before the run and are never hand-edited; \file{evals.json} is always
+the output of one genuine run (see Section~\ref{app:registry} and the integrity
+invariants in Appendix~\ref{app:learnings}). A method is not in this table until
+it ships with a failable test of its own output.
+
+\renewcommand{\arraystretch}{1.25}
+\footnotesize
+\begin{longtable}{@{}p{2.5cm}p{2.6cm}p{5.4cm}p{2.6cm}@{}}
+\toprule
+\textbf{Method} & \textbf{Value (2026-06-12)} & \textbf{Band / check} & \textbf{Basis} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Method} & \textbf{Value} & \textbf{Band / check} & \textbf{Basis} \\
+\midrule
+\endhead
+\midrule
+\multicolumn{4}{r@{}}{\textit{continued on next page}} \\
+\endfoot
+\bottomrule
+\endlastfoot
+
+\multicolumn{4}{@{}l}{\textbf{\textsf{I. Stationarity, cointegration and panels}}} \\
+\addlinespace[2pt]
+\code{unit\_root} & India ADF $-49.18$ & ADF stat $\in [-55, -45]$ & ADF$+$KPSS (\code{urca}, \code{tseries}) \\
+\code{live\_unit\_root} & verdict & levels non-stationary \emph{and} returns stationary & live ADF gate \\
+\code{panel\_unit\_root} & IPS $-77.26$ & IPS $< -10$ \emph{and} LLC $< -10$ (LLC $-51.79$) & IPS / LLC panel \\
+\code{vecm} & rank 3 & Johansen rank $=3$ (trace $7265.97\!\to\!1851.19$) & \code{urca} Johansen \\
+\code{granger} & 6 edges & $n_{\text{edges}}=6$ (USA out-degree 3) & Granger causality \\
+\addlinespace[3pt]
+
+\multicolumn{4}{@{}l}{\textbf{\textsf{II. Volatility, long memory and spectra}}} \\
+\addlinespace[2pt]
+\code{garch} & $\alpha\!+\!\beta\;0.991$ & persistence $\in [0.95, 1.0]$ & GARCH(1,1) (\code{tseries}) \\
+\code{dfa\_hurst} & $H\;0.542$ & $H \in [0.45, 0.65]$ & DFA \\
+\code{namh\_hurst} & Gold $H\;0.490$ & $H_{\text{mean}} \in [0.4889, 0.4909]$ & \code{namh} package \\
+\code{wavelet} & $47.07$ & scale-1 \% of total $\in [35, 60]$ & MODWT variance (\code{waveslim}) \\
+\code{wavelet\_coherence} & $0.249$ & mean coherence $\in [0.2, 0.3]$, peak scale \code{d6} & MODWT coherence \\
+\addlinespace[3pt]
+
+\multicolumn{4}{@{}l}{\textbf{\textsf{III. Information flow (transfer entropy)}}} \\
+\addlinespace[2pt]
+\code{ksg\_te} & USA$\to$Japan $0.154234$ & TE $\in [0.150, 0.158]$ & KSG / Frenzel--Pompe \\
+\code{ksg\_robustness} & mean Spearman $0.7282$ & headline edge rank $=1$ across all 8 grids \emph{and} mean Spearman $\in [0.6, 0.85]$ & KSG nuisance grid \\
+\code{namh\_te} & $-0.22322165$ & window mean $\in [-0.2242, -0.2222]$ & \code{namh} package \\
+\code{wqte} & $0.0391$ & aggregate QTE $\in [0.02, 0.06]$ & wavelet-quantile (\code{waveslim}$+$\code{quantreg}) \\
+\code{soch\_profile} & $0.0391$ & forward $\in [0.03, 0.05]$, peak scale \code{d4} & \code{sochcontagion} \\
+\addlinespace[3pt]
+
+\multicolumn{4}{@{}l}{\textbf{\textsf{IV. Connectedness and networks}}} \\
+\addlinespace[2pt]
+\code{connectedness} & TCI $30.25$ & TCI $\in [25, 35]$ & Diebold--Yilmaz \\
+\code{spillover\_rolling} & mean TCI $28.39$ & mean rolling TCI $\in [20, 35]$ & rolling Diebold--Yilmaz \\
+\code{rolling\_dcc} & $0.2295$ & India--USA mean corr $\in [0.15, 0.31]$ & DCC \\
+\code{network} & density $0.5667$ & 6 nodes, density $\in (0, 1]$ & \code{igraph} surface \\
+\code{var\_irf} & max root $0.7053$ & companion max root $\in [0.01, 0.999]$ & VAR / IRF (\code{vars}) \\
+\code{quantile\_var} & net $+0.7006$ & top tail driver $=$ USA, net $> 0$ & quantile VAR (\code{quantreg}) \\
+\addlinespace[3pt]
+
+\multicolumn{4}{@{}l}{\textbf{\textsf{V. Contagion channels and systemic risk}}} \\
+\addlinespace[2pt]
+\code{channel\_attribution} & GFC trade $27.9\%$ & trade share $\in [27.8, 28.0]$ \emph{and} dominant channel $=$ trade & channel attribution \cite{bhandari2026contagion} \\
+\code{sri\_daily} & $0.00849$ & SRI $\in [0.00848, 0.00850]$ & daily systemic-risk index \\
+\addlinespace[3pt]
+
+\multicolumn{4}{@{}l}{\textbf{\textsf{VI. Reproduction and formal verification}}} \\
+\addlinespace[2pt]
+\code{namh\_reproduce} & $\Delta\;1.55\times10^{-15}$ & Hurst \& TE panels green, $\max|\Delta| \le 10^{-8}$, $\ge 400$ compared, 0 NA-mismatch; FDR amber, 0 edges & \code{namh} $\Delta$-verifier \\
+\code{namh\_pipeline} & $-0.22322165$ & FDR 0/552, network degenerate, window mean $\in$ band, seed 42, RNG L'Ecuyer-CMRG & \code{namh} end-to-end (async) \\
+\code{soch\_robustness} & pass-rate $0.9911$ & baseline $\tau\!=\!0.05/J\!=\!4$ holds 28/28, rate $=0.9911$ exact, seed 42, $B\!=\!200$, grid 112 & \code{sochcontagion} (async) \\
+\end{longtable}
+\normalsize
+\renewcommand{\arraystretch}{1.0}
+
+\noindent
+Four methods (\code{ksg\_te}, \code{ksg\_robustness}, \code{namh\_pipeline},
+\code{soch\_robustness}) route to the asynchronous tower; the remaining
+twenty-two are synchronous on the kernel. The figures above are reproduced from
+the structural reference \file{ARCHITECTURE.md}~\S A2 and carry the same
+provenance as Appendix~\ref{app:results}.

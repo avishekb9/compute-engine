@@ -1,0 +1,221 @@
+\section{Deployment and Operations}
+\label{sec:deployment-ops}
+
+A research engine is only as reproducible as the procedure that ships it and the
+discipline that keeps it running. This section records how the kernel reaches Cloud
+Run, the isolation and credit posture it runs under, and the two standing
+operations that keep the system live without supervision: the nightly self-check
+loop and the systemic-risk feed. Throughout, the governing constraint is the same
+as in the architecture -- we expose nothing whose cost or blast radius we cannot
+bound in advance.
+
+\subsection{Deploying the kernel to Cloud Run}
+\label{sec:deploy}
+
+The kernel is deployed by \file{cloudrun/deploy.sh}, which builds a temporary
+context and runs \code{gcloud run deploy -{}-source}. The build step exists because
+the one bundled dataset, \file{G20.xlsx}, lives outside the engine directory and
+Docker cannot \code{COPY} from outside its context; the script stages the server,
+the R analyses, the web assets, and the three published method packages
+(\code{sochcontagion}, \code{contagionchannels}, \code{namh}) into a scratch
+directory alongside the dataset, then deploys that. The image is defined by
+\file{cloudrun/Dockerfile} from \code{rocker/r-ver:4.4.1}.
+
+The R stack drives most of the image. The \code{igraph} binary links against GLPK,
+libxml2 and GMP, so the Dockerfile installs the system libraries
+\code{libglpk40}, \code{libxml2} and \code{libgmp10} \emph{before} the R package
+install, both so the post-install load check succeeds and because the method needs
+them at runtime; the remaining R packages are pure-R or Rcpp and need no system
+dependencies. The three published packages are installed from their bundled
+tarballs, so a method such as \method{channel\_attribution} or \method{namh\_te}
+runs the paper's own code, not a reimplementation, and the build fails loudly if any
+package or its bundled data is missing. Node 20 is added last; the server itself is
+zero-dependency.
+
+Two deployment facts carry operational weight. First, the model API key is injected,
+never baked in. The script resolves \code{GOOGLE\_API\_KEY} from the environment or
+from a \code{.env.local} one level above the repository and passes it via
+\code{-{}-set-env-vars}; it is never printed and never committed. If the key is
+absent the script prints an explicit warning and ships a revision on which
+\route{/api/chat} is simply disabled -- a degraded but honest service, not a broken
+one. A revision accidentally shipped without the key can be repaired in place with
+\code{gcloud run services update -{}-update-env-vars}, no rebuild required.
+
+Second, the deploy flags encode the cost posture. The service is deployed with
+\code{-{}-timeout 300}, \code{-{}-min-instances 0}, \code{-{}-max-instances 2} and
+\code{-{}-concurrency 16}, alongside the runtime caps \code{COMPUTE\_TIMEOUT\_S=90},
+\code{MAX\_CONCURRENT=8} and \code{MAX\_LLM\_PER\_DAY=400}. The \code{-{}-min-instances
+0} is the scale-to-zero economics of Section~\ref{sec:kernel}: between requests the
+service costs nothing, which is appropriate for occasional, bursty research traffic
+and is what makes a publicly reachable compute endpoint affordable to operate
+indefinitely. The remaining caps are the credit and abuse controls of
+Section~\ref{sec:cost-bound}.
+
+\subsection{Isolation and the Tier-0 hardening posture}
+\label{sec:hardening}
+
+On Cloud Run, gVisor is the isolation boundary around the container, so the server's
+\code{bwrap} path is skipped by auto-detection and analyses run under the
+\code{timeout} fallback (Section~\ref{sec:sandbox}); the container holds no secrets
+beyond the injected key and the G20 panel is the only bundled dataset. We are
+explicit that this is \code{timeout} mode, not a network-isolated \code{bwrap}
+sandbox -- the live \route{/health} says so -- and the no-arbitrary-code guarantee
+therefore rests on the parameterised-only registry (Invariant~\ref{inv:no-rce}),
+which holds in either mode.
+
+On top of that boundary sits a layer of hardening whose purpose is to make a public
+launch safe against credit exhaustion and abuse rather than against code injection.
+The kernel applies, before any model call or spawn: a global per-instance
+concurrency ceiling (\code{MAX\_CONCURRENT}, shedding excess with \code{503}); a
+per-IP per-minute limiter and a per-IP daily quota on the paid routes; a 64\,KB
+request-body cap and a message-length cap that reject oversized or over-long inputs
+with \code{413} before any Gemini call is made; a slowloris guard on request and
+header timeouts; and a stale-cache fallback that serves the last good result,
+clearly flagged, when a live run fails rather than returning an error. Adversarial
+load testing of this posture -- per-IP bursts, multi-IP fan-out, oversized bodies,
+over-length inputs, method-injection probes, and budget exhaustion -- produced no
+uncoded error and no \code{500}; every rejection was a coded JSON response. The
+binding financial control among these is the daily model budget, treated next.
+
+\subsection{The cost bound on the AI layer}
+\label{sec:cost-bound}
+
+The AI routes are the only paid component, and their spend is bounded by a hard,
+verifiable ceiling rather than by a pricing estimate. Each instance enforces a
+global per-day cap of \code{MAX\_LLM\_PER\_DAY = 400} requests that reach the paid
+stage, reset at UTC midnight, on top of the per-IP limits. Because Cloud Run is
+deployed with \code{-{}-max-instances 2}, the fleet-wide ceiling is the product:
+\[
+  \text{paid turns/day} \;\le\; \underbrace{400}_{\text{per instance}}
+  \;\times\; \underbrace{2}_{\text{max instances}} \;=\; 800 .
+\]
+At most 800 paid turns per day can occur regardless of how many distinct IPs attack
+the service. A ``turn'' is one chat or research request that reaches the paid stage;
+over the cap, the route returns \code{503 daily\_capacity}, never a fabricated
+answer. This bound is what makes the launch safe: it is independent of attacker IP
+count, it is enforced before the Gemini call so an over-cap request spends nothing,
+and it is tunable through the environment. The application-level caps are the active
+backstop; a billing-account budget alert is an additional financial tripwire to be
+set by the project owner.
+
+\subsection{The governed cloud-capability layer}
+\label{sec:capability-layer}
+
+The cost bound of the previous subsection generalises into a small framework, because
+the language-model analyst is no longer the only managed-cloud surface the engine can
+reach. A governed capability layer in \file{server/upgrade-capabilities.mjs} exposes a
+fixed menu of paid Google Cloud services through one route, \route{POST /api/upgrade/run},
+whose body names a capability and a set of typed parameters. The route reuses the registry
+discipline of Section~\ref{sec:registry-guard}: it matches the name against a fixed
+four-entry table, refuses anything else with a coded error, and is fetch-only, so it adds
+no new execution surface and the parameterised-only guard is unchanged.
+
+Each capability is disabled unless its own flag, \code{CE\_CAP\_<NAME>}, is set
+explicitly, so the resting posture is least-privilege and off. Every paid call then passes
+a fixed gate in order, the flag, the typed-parameter check, a prerequisite check where one
+applies, and last a spend ceiling, before any request leaves the engine. A rejection at
+any stage returns a coded capacity or argument error and spends nothing, never a
+fabricated answer, exactly as the analyst cost bound does. The ceiling is one reusable
+governor, \method{capBudget}, in the same guards module as the analyst budget; it keeps a
+per-UTC-day counter for each named capability, billed in calls or, for embeddings, in
+tokens, and it reserves the units \emph{before} the call so that an over-cap request is
+refused rather than charged. It generalises the single \code{MAX\_LLM\_PER\_DAY} counter
+of Section~\ref{sec:cost-bound} to a family of named counters, and like the core budget of
+Section~\ref{sec:core-governance} it is the governor a saturable resource must ship with
+before it is reachable. We confirmed the ceiling on the live service: with the
+Gemini-on-Vertex flash cap set to one for the test, the second request of the day returned
+the coded capacity error rather than a result, and the cap was then restored.
+
+\begin{table}[h]
+\centering\small
+\begin{tabular}{@{}llll@{}}
+\toprule
+Capability & Vertex surface & Daily ceiling & Status \\
+\midrule
+Embeddings        & \code{text-embedding-004}        & $2{,}000{,}000$ tokens          & live \\
+Grounded search   & Vertex AI Search                 & $200$ queries                   & live \\
+Gemini-on-Vertex  & \code{aiplatform} generate       & $300$ flash / $100$ pro         & live \\
+Batch prediction  & \code{batchPredictionJobs}       & $1$ batch, $\le 50{,}000$ items & live \\
+\bottomrule
+\end{tabular}
+\caption{The four governed cloud capabilities, each behind a default-off flag with a
+per-UTC-day spend ceiling that trips before the paid call. All four are live end-to-end on
+the deployed service; the batch path reached completion once a single managed-dependency
+role grant was in place.}
+\label{tab:capabilities}
+\end{table}
+
+All four are live end-to-end. The grounded retrieval is worth a sentence of its
+own, because it is the one that touches citation integrity: it queries a Vertex AI Search
+datastore built over the engine's own literature warehouse, sixty-three documents imported
+from the \code{literature.papers} table, and it returns real document identifiers, so a
+grounded answer points to a passage that was actually retrieved rather than to an invented
+reference. This is a different mechanism from the web-search grounding of the research
+route in Section~\ref{sec:research-route}; here the corpus is our own. The fourth
+capability, batch prediction, stages its input, submits a real asynchronous job, and writes
+the resulting embeddings back to storage on completion. Reaching completion required one
+managed dependency to be satisfied: the embedding batch is routed through a managed
+delegation account that needed a single role grant to run on the project's behalf. With
+that grant in place the path runs end-to-end, verified by a submitted job that completed
+and returned its embeddings.
+
+Two properties close the layer. A secret never leaves the boundary: a scan gate refuses to
+commit or deploy any file carrying a secret-shaped value, reporting only a redacted
+fingerprint, and it matches values rather than environment-variable names so the engine's
+own key-reading code does not trip it; the route logs the capability name and the coded
+outcome but never the parameters and never a token, and the cloud credential is minted at
+the infrastructure boundary and used only as a bearer header. And the layer is reversible:
+clearing a capability's flag returns it to a disabled state, and the retrieval datastore
+can be deleted to return its cost to zero. The failable evaluation
+\file{test/upgrade.test.mjs} exercises every gate, default-off, the typed-parameter check,
+the ceiling trip with no token minted, the prerequisite hole with no spend, and the
+secret-scan blocking then clearing; six governance dossiers in \file{upgrade/} carry the
+inventory, the cost model, the threat model, an activation ledger, a reverification report,
+and the gate.
+
+\subsection{The SRI live feed as a standing operation}
+\label{sec:sri-feed}
+
+The systemic-risk feed is the engine's one continuously-updating product, and it is
+built to run unattended. A daily Cloud Scheduler tick invokes
+\route{POST /api/sri/cron-tick}; the kernel pulls the latest market closes from a
+public source, appends them to the stored returns panel, recomputes the index in a
+net-isolated step, and writes the new value to the \code{systemic\_risk.daily}
+store. The recomputation reuses the same KSG transfer-entropy estimator as
+\method{ksg\_te} (no surrogates), over the most-recent rolling window of the panel,
+across every active directed pair; the index is the mean directed transfer entropy,
+a system-wide nonlinear information-flow proxy where higher means more
+interconnected. It is deliberately a connectivity index and is not the MCPFM
+validation construct; the two are not conflated.
+
+The operation is idempotent and self-healing. The trusted Node layer fetches the
+data and reads or writes the data store, while the R step only ever sees an injected
+panel and never the network, preserving net-isolation. A missing day is skipped
+honestly rather than fabricated, and the panel's composition heals the gap on the
+next run. The tick also exposes a dry mode that exercises the full read-and-compute
+path with no writes, which serves as a health check. The feed handles markets that
+drop out of the panel by excluding only their own directed pairs at the affected
+date, so a date is a consistent constituent set rather than a stale mix: the first
+value, on 2026-03-18, was an SRI of $0.00849$ over 306 directed pairs, and the
+2026-06-05 value was $0.00709$ over 272 pairs, the smaller pair count reflecting
+markets without data in that window. One operational rule governs the schedule: the
+tick is never fired manually during the US trading session, because the fixed
+schedule is itself the guard against computing on a partial bar.
+
+\subsection{The nightly self-check loop}
+\label{sec:nightly}
+
+The kernel and feed are built to run unsupervised: the daily systemic-risk tick
+already runs on a managed scheduler, and a nightly loop, installed in cron,
+re-establishes the system's invariants and fails loudly when one breaks. The loop re-arms
+the tower if its port is closed without ever killing a running job, runs the full
+evaluation suite in place to refresh \file{evals.json}, refreshes the measured-state
+and claims ledgers (a regression exits non-zero; a red result becomes a contested
+pair and nothing is deleted), and finally, at low priority and doing zero compute,
+renders the academic run report from that night's \file{evals.json} verbatim and
+publishes it to the gallery. The report and gallery steps recompute nothing, so the
+reporting layer can never re-trigger heavy work. The discipline of the loop -- real
+compute under pre-registered failable bands, never hand-edited artefacts, honest
+negatives preserved -- is the operational embodiment of the verification posture
+that the rest of the manuscript develops; its own wiring is itself a failable
+evaluation row.

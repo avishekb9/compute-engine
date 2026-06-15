@@ -1,0 +1,196 @@
+\section{Introduction}
+\label{sec:intro}
+
+There is a quiet asymmetry in applied financial econometrics. Producing a result
+is cheap; making that result re-runnable, by someone else, on demand, is
+expensive, and so it is mostly not done. A reader of a typical spillover or
+contagion paper is handed a table and an appendix, not a button. When the
+printed coefficient is later questioned, the burden of reconstruction falls on
+whoever raises the question, and the original computation, with its package
+versions, its random seeds, and its data vintage, is rarely recoverable in full.
+
+We take the view that this is, for the most part, a software problem, and that
+it is worth attacking with the engineering discipline that a serious systems
+group would bring to any service whose correctness matters. Three failure modes
+recur. The first is undocumented data revisions: a vendor restates a close,
+a roll convention shifts a futures series, and a number that was correct last
+quarter no longer reproduces, with nothing in the published record to say so.
+The second is estimator detail buried in analysis scripts: an embedding lag, a
+neighbour count, a bandwidth, a partition of the sample into episodes, choices
+that move a headline figure but live only in a working directory. The third is
+machine-specific numerics: an unpinned multi-threaded linear-algebra library, a
+nearest-neighbour tie broken differently on a different processor, a sum
+accumulated in a different order, each capable of moving the third decimal place
+in a way no reader can anticipate. None of these is exotic. Together they are
+why a result in this field is so often easy to publish and hard to re-run.
+
+\subsection{Thesis: one engine, one substrate, one gate}
+
+This manuscript describes our response, which is deliberately a programme and not
+a paper. \engine{} is organised as a research ``space programme'': one sandboxed
+compute engine, exposing one methodological substrate of eight primitives, under
+one pre-registered and failable evaluation gate. The six published frameworks
+that the group has produced, on adaptive market networks (NAMH), scale-ordered
+contagion (SOCH), cross-border contagion channels, wavelet quantile transfer
+(WaveQTE), commodity systems, and protocol-mediated systemic risk (MCPFM), are
+\emph{elements} of that one programme, not separate codebases that happen to
+share an author. The same long-memory estimator, the same wavelet decomposition,
+the same transfer-entropy kernel, the same surrogate machinery, and the same
+community detection thread through all of them. Verifying the substrate, once,
+carefully, verifies every element built on it.
+
+The engine itself is small. It runs a fixed catalogue of econometric methods
+inside a sandbox and returns each result as structured data, with enough
+provenance attached that the number can be banded against an expectation and
+reproduced later. As of the live release it serves twenty-six methods, and the
+most recent full suite recorded twenty-six of twenty-six passing. It is written
+in Node and R, deployed for the research platform of the School of Humanities,
+Social Sciences and Management at IIT Bhubaneswar, and documented from the engine
+outward in the published reference \cite{bhandari2026econstellar}. The design
+thesis is one sentence: \emph{a method is not in the catalogue until it ships
+with a failable test of its own output.} The catalogue and that suite of tests
+are the deliverable; the elements are what the deliverable certifies.
+
+\subsection{Engine, not library}
+
+It would be natural to read what follows as a library of econometric routines.
+It is not, and the distinction is load-bearing both for safety and for trust.
+
+A library accepts arbitrary code and runs it; the surface for arbitrary-code
+execution is the point. The engine accepts no code. A request names a method
+from a fixed registry and a parameter object validated against a schema, and the
+runner scripts that do the work are part of the repository, never user-supplied.
+\textbf{The parameterised-only registry is therefore the primary guard against
+arbitrary-code execution}, and the operating-system sandbox is defence in depth
+on top of it, not the load-bearing control. On the workstation and in local
+development each analysis runs under \code{bubblewrap} with the network
+unshared, the filesystem read-only, and a fresh scratch space; the deployed
+cloud image ships without that tool and runs under a wall-clock timeout with the
+managed runtime as its kernel boundary. Either way, no user input reaches a
+shell, because the registry admits no user code in the first place. We return to
+this topology, and to the three planes the engine runs across, in
+Section~\ref{sec:architecture}.
+
+The other half of ``engine, not library'' is the catalogue rule already stated:
+a method joins only with a pre-registered, failable test of its own output, and
+holes in coverage are marked rather than filled. The registered voice of the
+project is blunt about the trade this implies. \emph{We would rather have
+twenty-six checked methods than fifty asserted ones.} A figure that the engine
+reports is a figure the engine can fail to reproduce, loudly and in public, and
+that is the property we are trying to buy.
+
+\subsection{Discipline borrowed from systems practice, applied to econometrics}
+
+The engineering posture here is borrowed, openly, from how top-tier systems and
+research-infrastructure groups treat reliability and verification: correctness
+asserted by a pre-registered evaluation rather than by the authors, every figure
+resolving to a job identifier or a revision string, machine-written ledgers that
+are never hand-edited, and honest reporting of what does not work. What is
+unusual is the domain. We apply that discipline to financial econometrics, a
+field whose objects are noisy, whose data is revised, and whose estimators are
+sensitive to choices that rarely survive into print. The combination is the
+contribution: not any single number, but the apparatus that makes each number
+re-runnable and the negatives as visible as the positives.
+
+That apparatus is needed precisely because of what the markets are. Under the
+adaptive markets hypothesis \citep{lo2004}, efficiency is not a fixed property
+but an evolutionary one: heterogeneous participants adapt at different rates,
+relationships strengthen and decay, and the structure a study measures in one
+regime need not hold in the next. The Grossman--Stiglitz argument
+\citep{grossman1980} sharpens the point from the side of information: if prices
+revealed all private information costlessly, no one would pay to gather it, so
+informationally efficient markets are impossible and a residue of private,
+costly, unequally held information must remain. Markets that are adaptive,
+heterogeneous, and information-driven in this sense do not yield to a single
+estimate stated once. They demand a measurement apparatus that can be re-run as
+the regime turns, that states its full parameterisation, and that reports
+honestly when a structure it found before has dissolved. The engine is our
+attempt to build exactly that apparatus and to hold it to a standard a reader can
+check.
+
+\subsection{Contributions}
+
+This manuscript makes the following contributions.
+
+\begin{enumerate}[leftmargin=1.6em]
+  \item \textbf{A programme framing.} We argue that six separately published
+  frameworks are better understood, and better maintained, as elements of one
+  research programme sharing a single eight-primitive substrate and a single
+  evaluation gate, and we make that claim concrete by exhibiting which primitives
+  each element instantiates (Section~\ref{sec:elements}).
+
+  \item \textbf{An engine whose safety rests on parameterisation.} We describe a
+  compute engine in which the parameterised-only registry, not the sandbox, is
+  the primary control against arbitrary-code execution, with the sandbox as
+  defence in depth (Section~\ref{sec:architecture}).
+
+  \item \textbf{A catalogue under a failable gate.} We state and apply the rule
+  that a method enters the catalogue only with a pre-registered, failable test of
+  its own output, served live as twenty-six methods at twenty-six of twenty-six
+  passing, and we describe the evaluation discipline that distinguishes a band
+  failure from a harness failure (Section~\ref{sec:elements} and the
+  verification section).
+
+  \item \textbf{Governed determinism and bit-exact acceleration.} We show that a
+  governed core budget with pinned linear-algebra threading makes a result
+  independent of worker count, and that a GPU port of the transfer-entropy
+  nearest-neighbour search reproduces the CPU estimate to within machine epsilon
+  while running several times faster (the heterogeneous-compute section).
+
+  \item \textbf{Honest negatives as first-class results.} We report the negatives
+  alongside the positives, including a contagion significance test that is not
+  significant, a false-discovery-controlled network that is degenerate, and a
+  pre-registered model re-evaluation whose discrimination falls below chance, and
+  we treat each as an immutable fact of the record (Sections~\ref{sec:elements}
+  and~\ref{sec:outlook}).
+\end{enumerate}
+
+\subsection{Related work}
+
+Three literatures meet in this engine. The first is the long concern with
+reproducibility in empirical economics, opened by the \emph{Journal of Money,
+Credit and Banking} replication project~\cite{dewald1986replication} and sharpened
+by studies of the numerical reliability of econometric software~\cite{mccullough1999numerical}
+and of reproducible econometric practice~\cite{koenker2009reproducible}. The
+computational-science community has codified much of the operational discipline we
+adopt: simple rules for reproducible research~\cite{sandve2013ten}, container-based
+environments~\cite{boettiger2015docker}, and the older idea of literate,
+provenance-carrying programs~\cite{knuth1984literate}. Our addition to this lineage
+is not another guideline but a running engine in which the discipline is enforced
+by a failable gate.
+
+The second is the information-theoretic and connectedness toolkit the substrate
+implements. Transfer entropy~\cite{schreiber2000} and its nearest-neighbour
+estimation~\cite{kraskov2004,frenzel2007} underpin the engine's directional-flow
+methods; effective transfer entropy and surrogate correction~\cite{marschinski2002,schreiber2000surrogate}
+control bias, applied financial studies~\cite{dimpfl2013using} motivate the design,
+and detrended fluctuation analysis~\cite{peng1994mosaic} is the long-memory
+primitive. The connectedness family follows the Diebold--Yilmaz
+programme~\cite{diebold2009measuring,diebold2012,diebold2014} and its frequency
+extension~\cite{barunik2018}, and we read the systemic-risk feed alongside the
+standard market measures: CoVaR~\cite{adrian2016covar}, systemic expected
+shortfall~\cite{acharya2017measuring}, and SRISK~\cite{brownlees2017srisk}.
+
+The third is the view of market efficiency the elements speak to: the
+efficient-markets benchmark~\cite{fama1970efficient}, the impossibility of
+informationally efficient markets~\cite{grossman1980}, heterogeneous-agent
+dynamics~\cite{brock1998heterogeneous}, and the adaptive-markets
+synthesis~\cite{lo2004} that gives the NAMH element its name.
+
+\subsection{Roadmap}
+
+The paper proceeds from the engine outward. Section~\ref{sec:architecture} sets out the
+three-plane architecture, the request lifecycle, and the sandbox topology. The
+substrate section catalogues the eight primitives and the twenty-six methods
+built on them, and the heterogeneous-compute and AI-layer sections cover the
+governed core budget, the GPU offload held to a bit-exact bar, and the
+natural-language front door onto the same validated registry. The verification
+and epistemics section states how a pre-registered, failable evaluation suite,
+a machine-written state ledger, and a claims record that never deletes combine
+into a self-checking system, with worked examples following.
+Section~\ref{sec:elements}, \emph{The Elements}, then reads the six published
+frameworks as elements of the one programme, each with its economic question,
+the substrate primitives it instantiates, its headline verified result, and its
+honest status. Section~\ref{sec:outlook} distils the design principles, states
+the limitations plainly, and describes the self-renewing programme we are
+building towards.

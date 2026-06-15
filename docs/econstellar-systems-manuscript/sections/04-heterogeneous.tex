@@ -1,0 +1,249 @@
+\section{Heterogeneous compute: core governance, GPU offload, and the asynchronous tower}
+\label{sec:heterogeneous}
+
+The methods in the substrate are not uniform in cost. Most return in well under a
+second on a stored panel; a few -- the transfer-entropy estimators in particular --
+spend their time in an $O(n^2)$ nearest-neighbour search and, run carelessly, can
+saturate a workstation. This section describes how \engine{} runs that uneven load
+safely. There are three concerns and one rule that ties them together. The rule is
+that \emph{the number of workers must never change a number}: every heavy loop in the
+engine is an order-free reduction over independent directed pairs or grid cells, so
+how we split the work governs only the use of the machine, never the result. Given
+that rule, the three concerns are how many CPU cores a job may use (core governance),
+whether the heaviest primitive can be moved off the CPU entirely (GPU offload), and
+how a job that runs for minutes rather than milliseconds is managed without blocking
+the synchronous kernel (the asynchronous tower).
+
+\subsection{Core governance: one budget, wired everywhere}
+\label{sec:core-governance}
+
+The motivating failure is concrete and was diagnosed to a single line. Three methods
+-- \method{ksg\_te}, \method{ksg\_robustness}, and \method{sri\_daily} -- each
+hard-coded their worker count as \code{ncores <- detectCores() - 1L}. On the
+22-logical-core workstation that is $21$ \code{mclapply} workers per job, and it
+ignored the job's own \code{n\_cores} request entirely. With the tower configured to
+run two jobs at once and the numeric libraries left multi-threaded, two concurrent
+\method{ksg\_robustness} jobs forked $2 \times 21 = 42$ worker processes, each of
+which could in turn spawn its own BLAS threads on top of the fork. That multiplicative
+oversubscription pinned all $22$ cores at $100\%$ and hung the machine; the reboot
+left two \method{ksg\_robustness} records stranded in the \code{running} state. The
+fault was not the estimator but the absence of a single place that decides how many
+cores a job may use.
+
+The fix is exactly that single place. In \file{r/\_io.R} we added one governed
+budget, \method{ce\_ncores}$(p,\ \mathit{reserve})$, and wired it into all six
+\code{mclapply} call sites. Its precedence is fixed and the ceiling is clamped last:
+
+\begin{lstlisting}[language=R,caption={The single core budget (\file{r/\_io.R}).},label=lst:ce-ncores]
+ce_ncores <- function(p = NULL, reserve = 2L) {
+  b <- max(1L, parallel::detectCores() - as.integer(reserve))      # 1. base
+  if (!is.null(p) && !is.null(p$n_cores)) {                        # 2. job override
+    req <- suppressWarnings(as.integer(p$n_cores))
+    if (!is.na(req) && req >= 1L) b <- req
+  }
+  cap <- suppressWarnings(as.integer(Sys.getenv("CE_MAX_CORES", "")))
+  if (!is.na(cap) && cap >= 1L) b <- min(b, cap)                   # 3. HARD ceiling, last
+  max(1L, b)
+}
+\end{lstlisting}
+
+A base of \code{detectCores() - reserve} can be raised or lowered by an explicit
+\code{n\_cores} parameter, but the environment ceiling \code{CE\_MAX\_CORES} is applied
+afterwards and cannot be exceeded by any caller. The function always returns at least
+one. The complementary half lives in the tower process manager. The job server in
+\file{server/job-server.mjs} sets, for every R subprocess it spawns,
+\[
+  \texttt{CE\_MAX\_CORES} \;=\; \Big\lfloor \tfrac{\texttt{cpus}-2}{\texttt{MAX\_CONCURRENT}} \Big\rfloor,
+\]
+which evaluates to \textbf{10} on the 22-core workstation (reserving two threads for
+the operating system and the Node server). Because the ceiling is divided by the
+concurrency level, $\texttt{MAX\_CONCURRENT}$ jobs cannot jointly oversubscribe the
+box: two concurrent jobs now use at most $20$ cores, never $42$, and a job that asks
+for $21$ under a ceiling of $10$ is forced down to $10$. The same spawn pins each
+numeric library to a single thread (\code{OPENBLAS\_NUM\_THREADS},
+\code{OMP\_NUM\_THREADS}, \code{MKL\_NUM\_THREADS}, \code{VECLIB\_MAXIMUM\_THREADS},
+\code{NUMEXPR\_NUM\_THREADS} all set to \code{1}), removing the second factor of the
+oversubscription. The resulting budget is surfaced in the tower's \route{/health}
+response and startup log as \code{core\_budget}, so the governing number is observable
+rather than implicit.
+
+Pinning the BLAS threads is not only a safety measure. A multi-threaded BLAS reduces
+in a non-deterministic order, so summation results can differ in their last bits from
+run to run; pinning each library to one thread fixes that order and makes the numeric
+result reproducible. The core-governance change therefore buys a reproducibility gain
+on top of the safety one, and it does so without any risk to the published numbers,
+because of the order-free structure of the loops it governs.
+
+\begin{invariant}[Worker count does not change a result]
+\label{inv:worker-count}
+Every loop governed by \method{ce\_ncores} is a reduction over independent units --
+directed pairs for the transfer-entropy methods, $(k,\text{lag})$ cells for the
+robustness grid -- whose combination (a set of per-pair records, a mean, a ranking)
+does not depend on the order in which the units are evaluated or on how they are
+split across workers. Capping the worker count, or pinning BLAS to one thread,
+therefore changes only CPU occupancy and floating-point reduction order, never the
+estimate the eval suite gates.
+\end{invariant}
+
+\subsection{GPU offload of the transfer-entropy search}
+\label{sec:gpu-offload}
+
+Core governance makes the CPU path safe; the GPU path removes the heaviest load from
+the CPU altogether. The hot primitive is the Kraskov--St{\"o}gbauer--Grassberger
+estimator in its Frenzel--Pompe conditional-mutual-information form
+\citep{kraskov2004,frenzel2007,schreiber2000}: for each point we find $\epsilon_i$,
+the max-norm distance to its $k$-th neighbour in the joint
+$(\text{dst}_{t+1},\,\text{src}_t,\,\text{dst}_t)$ space, then count neighbours with
+marginal max-norm distance strictly less than $\epsilon_i$ in three sub-spaces. That
+search is $O(n^2)$ and is exactly the work that hung the workstation. We ported it to
+two \code{numba.cuda} kernels (CUDA $12.4$, numba $0.63.1$ \citep{lam2015numba}) and
+run it on an NVIDIA RTX 3000 Ada Laptop GPU (compute capability $8.9$, $8$\,GB). One
+thread handles one $(\text{search},\text{point})$ pair, so a directed pair's observed
+estimate and all of its surrogates run in a single launch, amortising the launch and
+host--device transfer overhead. The kernels compute in FP64.
+
+The choice of FP64 over FP32 is deliberate and is the crux of why a faster device does
+not threaten the engine's discipline. The Ada GPU's FP32 path is faster still, but the
+KSG estimate is the anchor that the eval suite checks; an approximate value would move
+that anchor and break the gate. We therefore pay for double precision so that the GPU
+result is not close to the CPU result but \emph{identical} to it. Max-norm distances
+are computed by absolute value, subtraction, and maximum, all exact IEEE operations,
+so the $k$-th order statistic of an identical multiset and the strict-$<$ integer
+counts are the same on host and device.
+
+That identity is enforced by a failable gate, \file{gpu/equiv\_gate.R}, which runs the
+GPU helper and the engine's own CPU estimator on a small bounded case and exits
+non-zero unless they agree. The observed maximum absolute difference is at most
+$7\times 10^{-16}$ -- it was $6.7\times 10^{-16}$ in the NAMH re-estimation -- and the
+six-decimal emitted values are bit-for-bit identical. The gate caught a subtle and
+instructive discrepancy. The engine's one-dimensional neighbour count, used for the
+conditioning sub-space at $\text{lag}=1$, tests membership with
+\code{findInterval(v - eps)} rather than the absolute form $|dp - v| < \epsilon$. On
+the rare boundary tie where $|dp - v|$ rounds to exactly $\epsilon$ but $v - \epsilon$
+rounds down, the interval form \emph{includes} a point that the absolute form excludes.
+The GPU helper replicates the engine's interval form host-side for that
+one-dimensional case, so the published estimate (the eval anchor) is preserved exactly
+rather than merely approximately. The lesson is that when a published estimator is
+ported to a faster device, the gate must be the estimator's own output, including its
+floating-point boundary quirks, not the textbook formula.
+
+\begin{principle}[Gate on the estimator's output, not its textbook form]
+\label{prin:gate-output}
+The only quantity the eval suite gates from the transfer-entropy methods is the
+observed TE (the \method{ksg\_te} band and the \method{ksg\_robustness} rankings and
+Spearman correlations). Because the GPU reproduces that quantity bit-for-bit, GPU
+execution can be the default without ever moving a published number. The significance
+$p$-value is a different matter: it comes from IAAFT surrogates
+\citep{schreiber1996}, and the engine seeds neither transfer-entropy method, so the
+$p$-value is a non-reproducible draw on the CPU path and on the GPU path alike. We
+never claim it reproducible, and the gate never tests it.
+\end{principle}
+
+Dispatch and fallback are handled by \method{ce\_ksg\_gpu\_pairs} in
+\file{r/\_ksg\_core.R}, shared by \method{ksg\_te} and \method{ksg\_robustness}. The
+default is \code{AUTO}: setting \code{CE\_GPU=0} forces the CPU path, otherwise the
+dispatcher probes for a usable CUDA device, and if one is present it writes the
+returns matrix as a raw column-major binary alongside a JSON spec
+($n$, $k$, lag, surrogate count, the pair list), invokes \file{gpu/ksg\_gpu.py}, and
+parses the per-pair results, stamping a \code{compute\_path} field. Robustness is the
+point of the design: any failure at all -- \code{CE\_GPU=0}, no CUDA device, a missing
+or broken helper, a malformed or short result -- returns \code{NULL}, and the caller
+then runs its governed CPU \code{mclapply} path. A box with no GPU, or one with a
+broken toolkit, degrades silently and safely to the path that core governance already
+made safe.
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[font=\footnotesize,
+  bx/.style={draw=cegrey, thick, rounded corners=2pt, fill=celight, align=center,
+    inner sep=4pt, text width=3.2cm, minimum height=8mm},
+  gpu/.style={bx, fill=cegreen!14, draw=cegreen},
+  cpu/.style={bx, fill=ceorange!16, draw=ceorange},
+  dec/.style={draw=ceblue, thick, fill=ceblue!10, diamond, aspect=2, align=center,
+    inner sep=1pt, font=\scriptsize, text width=1.9cm},
+  ar/.style={-{Stealth[length=2mm]}, thick, draw=cegrey}]
+  \node[bx] (entry) {\code{ce\_ksg\_gpu\_pairs()}};
+  \node[dec, below=7mm of entry] (d1) {GPU available?};
+  \node[gpu, below=7mm of d1] (inv) {invoke \file{ksg\_gpu.py}};
+  \node[dec, below=7mm of inv] (d2) {result valid?};
+  \node[gpu, below=7mm of d2] (ok) {\code{compute\_path}\\\code{="gpu"}};
+  \node[cpu, right=30mm of d2] (cpu) {governed CPU\\\code{mclapply}\\(\code{"cpu"})};
+  \draw[ar] (entry) -- (d1);
+  \draw[ar] (d1) -- node[right,font=\scriptsize]{yes} (inv);
+  \draw[ar] (inv) -- (d2);
+  \draw[ar] (d2) -- node[right,font=\scriptsize]{yes} (ok);
+  \draw[ar] (d1.east) -| node[near start,above,font=\scriptsize]{no} (cpu.north);
+  \draw[ar] (d2.east) -- node[above,font=\scriptsize]{no} (cpu.west);
+  \node[align=center, font=\scriptsize\itshape, text=cegrey, below=6mm of ok,
+    text width=8.4cm] (note) {both paths return the same observed transfer entropy,
+    bit-exact to $\max|\Delta| \le 7\times10^{-16}$};
+\end{tikzpicture}
+\caption{GPU dispatch with governed-CPU fallback. ``GPU available?'' tests
+\code{CE\_GPU}$\neq$0, a present CUDA device, and a successful probe; any failure,
+including a malformed result, falls back to the path that core governance already
+made safe. The offload changes only where the observed transfer entropy is
+computed, never its value.}
+\label{fig:dispatch}
+\end{figure}
+
+The surrogate inner loop stays on the host. IAAFT is dominated by a per-surrogate FFT
+rather than by the neighbour search, so the helper runs it batched over surrogates
+with a batched FFT and feeds the resulting source series into the same two kernels.
+The measured effect of the offload is twofold -- it is faster and it frees the CPU. On
+this workstation, $12$ directed pairs with $B=99$ surrogates run in $82$ seconds at
+roughly one core on the GPU against $289$ seconds across roughly seven cores on the
+governed CPU, a \textbf{3.5$\times$} speed-up that also returns six cores to other
+work. In the isolated trial on a deterministic coupled system the kernel search alone
+runs up to \textbf{73.76$\times$} faster ($n=3000$), and between $32\times$ and
+$74\times$ faster across $n \in \{2000, 3000, 5000\}$, all bit-exact. The
+confirmation that matters is the full-panel re-run: the exact workload that hung the
+machine -- the full G20 panel, $306$ directed pairs at $B=99$ -- completed on the GPU
+in \textbf{35.6 minutes} at $100\%$ of \emph{one} core with a peak of $388$\,MB of
+host memory, returning $106$ of $306$ pairs significant and the USA${\to}$Japan
+estimate at $\mathbf{0.154234}$, identical to the CPU value. The saturation that hung
+the 22-core box is gone, and the heaviest, most parallel primitive in the engine now
+runs on the device best suited to it.
+
+\subsection{The asynchronous tower}
+\label{sec:async-tower}
+
+A run that takes thirty-five minutes does not belong on the synchronous kernel, which
+runs scale-to-zero on Cloud Run under a request timeout. Four methods are heavy enough
+to need a different home: \method{ksg\_te}, \method{ksg\_robustness},
+\method{namh\_pipeline}, and \method{soch\_robustness}, each flagged
+\code{long\_running} in the registry. These run on the always-on workstation tower
+managed by \file{server/job-server.mjs}, which executes the same parameterised-only R
+registry as the kernel -- it discovers methods from \file{r/*.R} and refuses anything
+else -- but asynchronously. A \route{POST /api/jobs/submit} validates the workspace
+and the method name, returns a \code{job\_id} immediately, and queues the work; the
+manager runs at most \code{MAX\_CONCURRENT} jobs at a time under the core budget of
+Section~\ref{sec:core-governance}. Each job record and its result persist to a
+\file{.jobs/} directory on disk and are reloaded on startup, so a job survives a
+restart and is addressable by a permalink for thirty days; a job left
+\code{running} by a crash is requeued rather than lost.
+
+Progress is reported without compromising the engine's output contract. The kernel
+requires that a method's standard output be a single pure JSON object, so progress
+lines cannot simply be printed. The progress emitter \method{ce\_progress} in
+\file{r/\_io.R} is therefore silent unless the environment variable \code{CE\_PROGRESS}
+is set, and only the tower sets it:
+
+\begin{lstlisting}[language=R,caption={Progress is opt-in, so the synchronous contract is never polluted (\file{r/\_io.R}).},label=lst:ce-progress]
+ce_progress <- function(fraction = NA, stage = "", elapsed_s = NA) {
+  if (!nzchar(Sys.getenv("CE_PROGRESS"))) return(invisible(NULL))   # silent under the kernel
+  cat(toJSON(list(`__progress__` = TRUE, fraction = fraction,
+                  stage = stage, elapsed_s = elapsed_s),
+             auto_unbox = TRUE, na = "null"), "\n", sep = "")
+  flush(stdout())
+}
+\end{lstlisting}
+
+Under the synchronous kernel this is a no-op and the stdout remains a single JSON
+object. Under the tower, which spawns each method with \code{CE\_PROGRESS=1}, the
+method emits newline-terminated progress objects tagged \code{\_\_progress\_\_}; the
+job manager parses those lines, updates the job record, and pushes them to any
+subscriber over Server-Sent Events at \route{/api/jobs/:id/stream}, while the final
+unterminated JSON object is read as the result. The same heavy method thus serves two
+callers -- a synchronous one that sees only the answer and an asynchronous one that
+sees the answer and the progress -- from one code path, with the environment, not the
+source, deciding which behaviour is in force.

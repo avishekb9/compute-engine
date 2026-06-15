@@ -1,0 +1,53 @@
+\section{The learning ledger}
+\label{app:learnings}
+
+The engine keeps a staged record of operational lessons in \file{STATE.md}: a
+burned lesson enters at \emph{fail}, \emph{investigate} names the cause,
+\emph{verify} proves the fix, and \emph{distil} promotes it to a consultable
+skill that future sessions read before acting. This is the machinery by which the
+system learns from its own failures rather than repeating them. We reproduce the
+ledger below in condensed form; each row is a real incident with a named cause
+and a verified fix.
+
+\renewcommand{\arraystretch}{1.3}
+\footnotesize
+\begin{longtable}{@{}p{0.7cm}p{1.6cm}p{11.4cm}@{}}
+\toprule
+\textbf{ID} & \textbf{Stage} & \textbf{Lesson} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{ID} & \textbf{Stage} & \textbf{Lesson} \\
+\midrule
+\endhead
+\midrule
+\multicolumn{3}{r@{}}{\textit{continued on next page}} \\
+\endfoot
+\bottomrule
+\endlastfoot
+
+L1 & distilled & A pre-registered robustness grid must anchor through the paper's own scripts and estimation universe before any badge is written: the package-default universe gave $p\,0.158$ where the published 56-pair design gives $0.042$. Stop on anchor failure, document the amendment openly, keep the auxiliary run. \\
+L2 & distilled & \file{cloudrun/deploy.sh} resolves the API key from env first, then \code{\$REPO/../.env.local}; moving the engine root silently ships a chat-disabled revision. Check the WARN line; restore with \code{gcloud run services update --update-env-vars} (no rebuild). \\
+L3 & distilled & Yahoo serves \code{close: null} for ten hours after a session; the finite-close guard makes the 06:00Z tick skip honestly and composition heals the gap next day. Never fire the SRI tick manually during the US session: the schedule \emph{is} the partial-bar guard. \\
+L4 & distilled & Eval failures split into band failures (engine wrong: stop, investigate) and extraction failures (harness misread the result shape: fix the check, re-run the whole suite). Fixing extraction is calibration, not gaming, only while the expected band is untouched. \\
+L5 & distilled & ``5-market IPS $-77.26$'' was unreproducible until the market set was pinned to $\{$India, USA, UK, China, Japan$\}$; a different fifth market gives $-80.16$. Documented tuples must name their full parameterisation or they are not reproducible claims. \\
+L6 & distilled & LaTeX source grep is insufficient for count consistency: TikZ figure labels and line-wrapped phrases are invisible to line-based search but visible in the rendered PDF. Verify with \code{pdftotext file - | tr} newline \code{space | grep}, ligature-tolerant, across all figure sources. \\
+L7 & distilled & A laptop reboot killed both \code{setsid} daemons mid-pipeline; the eval suite survived because it had already written its artefact. Long-lived local services need a reboot-surviving re-arm; pipelines should write artefacts as they go, not at the end. \\
+L8 & distilled & Bibliography titles are looked up, never reconstructed from codenames: ``MCPFM'' resolves to a Model Context Protocol title (arXiv:2507.08065), not the codename expansion. Verify id $\leftrightarrow$ title $\leftrightarrow$ authors against the registered record before citing. \\
+L9 & verify & A dual-use ESM script (CLI $+$ importable) must guard its CLI dispatch with the main-module check: a seeder's top-level dispatch ran the wrong selftest and \code{process.exit}'d, masquerading as a pass. Fixed and selftested. \\
+L10 & verify & Before writing code against a large vendored dependency, grep the dependency's own source for exact symbol names first: the Lean spectral proof compiled first-try with zero name-risk iterations because the mathlib symbols were verified from source pre-write. The code-API corollary of L8. \\
+L11 & verify & The 22-core hang had one named cause: three runners hard-coded \code{detectCores()-1} ($=21$ workers), ignoring the job's \code{n\_cores}; two concurrent jobs forked $2\times21$ workers over unpinned BLAS. Fix: one governed budget \code{ce\_ncores()} with a server-set hard ceiling on all six fan-out sites, BLAS pinned to 1. Parallel fan-out must be governed by a ceiling, never by \code{detectCores()} under concurrency. \\
+L12 & verify & GPU offload is feasible with zero install: \code{numba} 0.63.1 $+$ CUDA 12.4 are present and the RTX 3000 Ada is supported. The k-NN transfer-entropy search ports to two \code{numba.cuda} kernels, bit-exact against the FP64 CPU reference, 32--74$\times$ faster. The bar held: the GPU must equal the CPU, not approximate it. \\
+L13 & verify & \code{ksg\_te} and \code{ksg\_robustness} dispatch to the GPU with governed-CPU fallback (default AUTO; \code{CE\_GPU=0} forces CPU). The bit-exactness gate caught a non-obvious boundary convention in the engine's own 1-D count, which the GPU then replicated host-side. Gate on the estimator's own output, including its floating-point boundary quirks, not the textbook form. Full-panel re-run: 35.6 min on one core; the 22-core saturation is gone. \\
+\end{longtable}
+\normalsize
+\renewcommand{\arraystretch}{1.0}
+
+\noindent
+The distilled rows (L1--L8) have been promoted to named skills that future
+sessions consult before acting; the verify-stage rows (L9--L13) carry a verified
+fix and are pending distillation. The ledger's own structural wiring (its steps
+exist, its artefact paths agree, the claims map is a subset of the suite rows, no
+nightly step deletes, the gap rule and its review gate remain intact) is itself a
+failable evaluation, \file{evals/loop-integrity.test.mjs}, which began at 11/20
+red and now passes.

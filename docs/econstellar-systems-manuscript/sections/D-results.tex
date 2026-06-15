@@ -1,0 +1,101 @@
+\section{Verified results and provenance}
+\label{app:results}
+
+Every quantitative claim in this manuscript traces to one of two sources: a live
+computation against the engine's pre-registered band, or a documented published
+result reproduced by the engine. This appendix collects those figures with their
+provenance, so a reader can locate the origin of any number we state. Engine
+state at the time of writing: \textbf{26 methods}, live revision
+\code{shssm-compute-00036-llf} (confirmed 2026-06-15 by \code{GET /health}
+returning \code{methods:26}, \code{sandbox:"timeout"}, \code{timeout\_s:90}); the
+most recent full suite passed \textbf{26/26}. The analysis panel
+\file{G20.xlsx} spans 18 markets, 2006-01-12 to 2026-03-18, giving 306 directed
+pairs, and is byte-hashed at startup.
+
+\subsection*{Engine and infrastructure figures}
+
+\renewcommand{\arraystretch}{1.25}
+\small
+\begin{longtable}{@{}p{4.6cm}p{4.2cm}p{5.0cm}@{}}
+\toprule
+\textbf{Quantity} & \textbf{Verified value} & \textbf{Provenance} \\
+\midrule
+\endhead
+Registry size & 26 methods & \code{/health}; \file{run-evals.mjs} \\
+Eval suite & 26/26 pass & most recent full run (2026-06-12) \\
+Core ceiling & \code{CE\_MAX\_CORES}$=10$ & $\lfloor(\text{cpus}-2)/\text{MAX\_CONCURRENT}\rfloor$ on the 22-core workstation \\
+GPU bit-exactness & $\max|\Delta| \le 7\times10^{-16}$ & \file{gpu/equiv\_gate.R} ($6.7\times10^{-16}$ in the NAMH re-estimation) \\
+GPU speedup (governed) & $3.5\times$ & 12 pairs, $B\!=\!99$: GPU 82~s ($\sim$1 core) vs CPU 289~s ($\sim$7 cores) \\
+GPU full-panel re-run & 35.6 min, 1 core, peak 388 MB & 306 pairs, $B\!=\!99$; observed TE bit-exact \\
+AI cost ceiling & $\le 800$ paid turns/day & 400 turns/instance/day $\times$ 2 instances \\
+\bottomrule
+\end{longtable}
+\normalsize
+
+\subsection*{Method figures (most recent suite)}
+
+\renewcommand{\arraystretch}{1.25}
+\small
+\begin{longtable}{@{}p{3.3cm}p{5.6cm}p{4.9cm}@{}}
+\toprule
+\textbf{Method} & \textbf{Verified value} & \textbf{Note} \\
+\midrule
+\endhead
+\code{unit\_root} & India ADF $-49.18$; UK $-52.64$ & live re-probe $-49.1796$ \\
+\code{garch} & persistence $\alpha+\beta=0.991$ & GARCH(1,1) \\
+\code{dfa\_hurst} & India $H=0.542$ & DFA \\
+\code{namh\_hurst} & Gold $H=0.490$ & band $[0.4889, 0.4909]$; \code{namh} package \\
+\code{panel\_unit\_root} & IPS $-77.26$, LLC $-51.79$ & tuple $\{$India,USA,UK,China,Japan$\}$; tuple-sensitive (Brazil fifth $\to -80.16$) \\
+\code{vecm} & rank 3 (trace $7265.97\!\to\!1851.19$) & India/USA/UK \\
+\code{granger} & 6 edges (USA out-degree 3) & India/USA/UK/China \\
+\code{wavelet} & India $d1 = 47.07\%$ & MODWT variance \\
+\code{wavelet\_coherence} & mean 0.249, peak $d6$ (0.523) & USA/India scale-resolved \\
+\code{connectedness} & TCI $30.25\%$ & short 15.05 / medium 11.56 / long 3.64 \\
+\code{spillover\_rolling} & mean TCI 28.39 (45 windows) & range $10.5$--$46.3$ \\
+\code{rolling\_dcc} & India--USA mean $\rho\,0.23$ & $0.2295$; range $0.15$--$0.31$ \\
+\code{network} & 6 nodes, 18 edges, density 0.60 & $0.5667$; 6 communities \\
+\code{quantile\_var} & USA top driver, net $+0.70$ & $+0.7006$; $\tau=0.05$ \\
+\code{var\_irf} & max root $0.7053$ (lag 7) & stable \\
+\code{wqte} & USA$\to$India $\tau.05 = 0.039$ & $0.0391$; MODWT$+$quantreg reimplementation \\
+\code{soch\_profile} & USA$\to$India 4-scale agg 0.0391 & peak $d4$; published 5-scale agg 0.0426 \\
+\code{ksg\_te} & USA$\to$Japan TE $0.154234$ & 306 pairs, 108 significant; GPU $\equiv$ CPU \\
+\code{ksg\_robustness} & mean Spearman 0.7282 (min 0.581) & USA$\to$Japan ranked first across all 8 $(k,\text{lag})$ \\
+\code{namh\_te} & window-1 mean $-0.223222$ & bit-exact to cached ($\Delta\,4.92\times10^{-9}$) \\
+\code{namh\_reproduce} & $\max|\Delta|\,1.55\times10^{-15}$ & FDR amber 0/552 by construction \\
+\code{namh\_pipeline} & window mean $-0.22322165$ & band $[-0.2242,-0.2222]$; FDR 0/552 degenerate; seed 42; job \code{job\_20260612\_0f2f0fd5} (1222~s) \\
+\code{channel\_attribution} & GFC trade $27.9\%$ $[26.1, 29.8]$ & reproduced 0.000 pp; 8 episodes \\
+\code{sri\_daily} & first 0.00849 (306 pairs); 2026-06-05 0.00709 (272 pairs) & band $[0.00848, 0.00850]$ \\
+\code{soch\_robustness} & pass-rate 0.9911 (111/112) & baseline $\tau\!=\!0.05/J\!=\!4$ holds 28/28; seed 42; $B\!=\!200$ \\
+\bottomrule
+\end{longtable}
+\normalsize
+
+\subsection*{Programme-element figures (reported honestly, positives and negatives)}
+
+\begin{itemize}[leftmargin=1.3em,itemsep=2pt]
+  \item \textbf{SOCH:} SOCH-A $p=0.042$; SOCH-B 28/28; SOCH-C $p=0.105$
+    (\emph{not} significant, immutable). Lean: \code{sorry}-count 1/12;
+    \code{prop:spectrum} closed ($\Norm{H(\omega)}^2 = S(\omega)$).
+  \item \textbf{NAMH} (Frontiers Paper~I, 17~pp, 28 assets 2001--2026): US
+    broadcasts (out-strength 9/20 annual, 26/79 quarterly); Japan receives
+    (in-strength 12/20, PageRank 10/20, Katz 8/20). Honest exception: quarterly
+    Katz leader Argentina 22 edges over Japan 21. GPU $\equiv$ CPU
+    $6.7\times10^{-16}$; verification 44/44.
+  \item \textbf{contagion-channels:} GFC trade channel 27.9\%, reproduced to
+    0.000 pp (\cite{bhandari2026contagion}).
+  \item \textbf{WaveQTE:} the 50.0\%-versus-27.9\% divergence resolved as a
+    method-and-partition difference, not a defect; the engine \code{wqte} is an
+    honest MODWT$+$quantreg reimplementation.
+  \item \textbf{commodity:} Subprime most-fragmented, $|FC| = 0.290$, 5
+    communities (23 commodities, 1991--2025).
+  \item \textbf{MCPFM} (\cite{bhandari2025mcpfm}): v1 AUC 0.581 (DeLong
+    $p=0.030$) / 0.915 (US-COVID); a pre-registered v2 re-evaluation returns AUC
+    0.470 (Hansen SPA $p=0.031$), reported openly. Reproduce status: honest
+    pending.
+\end{itemize}
+
+\noindent
+The tuple-sensitivity of \code{panel\_unit\_root} (L5), the unseeded-surrogate
+non-reproducibility of transfer-entropy p-values, and the degenerate NAMH FDR
+network are not blemishes to be hidden; they are facts of the record, and the
+engine is built to report them as such.

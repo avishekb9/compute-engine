@@ -1,0 +1,178 @@
+\section{Worked Examples}
+\label{sec:worked}
+
+The preceding sections describe the engine's planes, its guards, and its
+verification layer in the abstract. This section makes them concrete with four
+end-to-end traces, each a real path that the system runs: a synchronous
+transfer-entropy call, an exact reproduction of a published result, a GPU re-run
+of the workload that once hung the workstation, and one nightly tick of the
+live systemic-risk feed. Each trace is chosen because it exercises a property
+argued elsewhere in the paper, and each ends in a number that traces to the
+verified-results record.
+
+\subsection{A synchronous request and its response}
+\label{sec:worked-sync}
+
+The most common path is a single method call returning structured data. We
+follow the directed transfer entropy from the United States to Japan, the edge
+that the \method{ksg\_te} evaluation row bands.
+
+\begin{cexample}[KSG transfer entropy, request to response]
+\label{ex:ksg-sync}
+A client posts a method name and a validated parameter object; no code is sent.
+\begin{lstlisting}[language=bash]
+POST /api/compute/run
+{ "method": "ksg_te", "params": { "series": ["USA", "Japan"] } }
+\end{lstlisting}
+The request crosses five stages before a number comes back.
+\begin{enumerate}[leftmargin=1.6em,itemsep=2pt]
+  \item \textbf{HTTP and rate guard.} The kernel accepts the request on
+  \route{/api/compute/run} under its per-minute rate limit.
+  \item \textbf{Registry guard.} The method name is looked up in the fixed
+  registry. \method{ksg\_te} resolves; an unknown name is a clean rejection. The
+  parameter object is validated against the method's schema. \emph{No user input
+  reaches a shell, because the registry admits no user code in the first place.}
+  \item \textbf{Dispatch.} \method{ksg\_te} is one of the heavy asynchronous
+  methods, so the work is handed to the always-on workstation job server rather
+  than run inline; the call returns a job identifier and is polled to completion
+  (here \code{job\_20260612\_92fa3f31}).
+  \item \textbf{Sandboxed R spawn.} The runner script for the method is spawned
+  under the sandbox, reads the stamped \file{G20.xlsx} panel, computes the
+  Kraskov--St\"ogbauer--Grassberger nearest-neighbour transfer entropy
+  \citep{kraskov2004} in the Frenzel--Pompe form \citep{frenzel2007}, and assesses
+  significance against IAAFT surrogates \citep{schreiber1996}.
+  \item \textbf{Single-JSON stdout.} The script writes exactly one JSON object to
+  standard output; the kernel parses it and returns the result.
+\end{enumerate}
+The response carries the directed edge and the panel-level summary:
+\begin{lstlisting}[language=JavaScript]
+{ "ok": true,
+  "result": { "edges": [ { "from": "USA", "to": "Japan", "te": 0.154234 } ],
+              "n_pairs": 306, "n_significant": 108 },
+  "ms": 105081, "cached": false }
+\end{lstlisting}
+The headline edge is \textbf{0.154234}; across the 18-market panel the run scores
+\textbf{306 directed pairs}, of which \textbf{108} are significant. This is the
+exact value the \method{ksg\_te} band $[0.150, 0.158]$ checks in
+Section~\ref{sec:verification-evals}.
+\end{cexample}
+
+\subsection{An exact reproduction}
+\label{sec:worked-repro}
+
+The second trace re-runs a published estimator and matches its output to machine
+precision. This is the property a reproduction target exists to buy: not a number
+close to the paper's, but the paper's number, produced by the paper's own code
+inside the sandbox.
+
+\begin{cexample}[Reproducing the published contagion channel share]
+\label{ex:channel}
+The \method{channel\_attribution} method runs the published
+\code{contagionchannels} package, not a reimplementation, and reports the
+global-financial-crisis channel decomposition.
+\begin{lstlisting}[language=bash]
+POST /api/compute/run
+{ "method": "channel_attribution", "params": { "episodes": ["GFC"] } }
+\end{lstlisting}
+The engine returns the trade-channel share for the crisis window:
+\begin{lstlisting}[language=JavaScript]
+{ "ok": true,
+  "result": { "episodes": [ { "episode": "GFC",
+                              "dominant": "Trade", "trade": 27.9 } ] },
+  "ms": 25060 }
+\end{lstlisting}
+The trade share is \textbf{27.9\%} and the dominant channel is \method{Trade},
+reproducing the paper's published Table~5 to \textbf{0.000 pp}
+\citep{bhandari2026contagion}. The evaluation row checks both the share band
+$[27.8, 28.0]$ and the dominant-channel label, so a drift in either fails the row.
+\end{cexample}
+
+A second, even tighter reproduction lives one layer down, in the dedicated
+delta-verifier \method{namh\_reproduce}. It re-runs the published \code{namh}
+package estimators and reports the maximum absolute deviation from the archived
+output, cell by cell. On the workstation the rolling Hurst panel and the
+per-window raw transfer entropy reproduce to a maximum absolute deviation of
+\textbf{$1.55 \times 10^{-15}$}, well inside the green threshold of $10^{-8}$;
+the false-discovery network is held \emph{amber} by design, with 0 of 552 edges
+retained, because that null is the published result and a green there would be a
+silent over-claim. A deterministic estimator earns a green only on an exact match;
+a stochastic surrogate stage, whose generator was unseeded in the original run, is
+reported amber rather than dressed as exact. Reproduction is graded, not asserted.
+
+\subsection{A GPU re-run, bit-exact to the CPU estimator}
+\label{sec:worked-gpu}
+
+The third trace is the workload that once saturated all twenty-two logical cores
+of the workstation: the full directed transfer-entropy panel with surrogate
+significance. Section~\ref{sec:verification-ledger} records the two lessons that
+made it tractable -- one governed core budget with pinned linear algebra (L11),
+and a bit-exact GPU offload of the nearest-neighbour search (L12, L13). This
+trace shows the offload at full panel scale.
+
+\begin{cexample}[The full panel on one GPU]
+\label{ex:gpu}
+The same \method{ksg\_te} request, but issued over the entire 18-market panel with
+99 surrogates per pair, dispatches to the GPU when a CUDA device is present and
+falls back to the governed CPU otherwise (the default is automatic;
+\code{CE\_GPU=0} forces the CPU path).
+\begin{lstlisting}[language=bash]
+# 306 directed pairs x 99 IAAFT surrogates = 30,600 neighbour searches
+POST /api/compute/run  { "method": "ksg_te", "params": { "dataset": "g20" } }
+\end{lstlisting}
+The neighbour search runs in two CUDA kernels; the surrogate generation runs on
+the host, because that stage is unseeded and its p-values are non-reproducible in
+either path. The exact workload that previously hung the box completed in
+\textbf{35.6 minutes at 100\% of one core}, peak \textbf{388 MB}, scoring
+\textbf{106 of 306} pairs significant (the significant-edge count moves by a pair
+or two between runs, against the 108 of the synchronous eval row, precisely because
+the surrogate draw is unseeded; the observed transfer entropy the gate checks does
+not move), with USA-to-Japan returning \textbf{0.154234} exactly and Japan the
+dominant information sink. The governing comparison is not
+speed but agreement: the GPU's observed transfer entropy equals the CPU estimator
+to \textbf{$6.7 \times 10^{-16}$}, inside the pre-registered bit-exactness gate of
+$7 \times 10^{-16}$, and the observed transfer entropy is the only quantity the
+evaluations gate. The GPU-default therefore never moves a published number; it
+only frees the processor.
+\end{cexample}
+
+\noindent On a smaller, controlled comparison (12 pairs, 99 surrogates) the GPU
+path completed in 82 s on roughly one core against 289 s on roughly seven governed
+cores, a $3.5\times$ speed-up that simultaneously returns the rest of the machine.
+The bar held throughout is the one stated as an invariant elsewhere: the device
+must \emph{equal} the CPU estimator on the gated quantity, not approximate it.
+
+\subsection{A nightly tick of the systemic-risk feed}
+\label{sec:worked-sri}
+
+The fourth trace is the self-sustaining one: the daily append that keeps the live
+systemic-risk index current without supervision. It runs ahead of the nightly
+verification loop of Section~\ref{sec:verification-loop}, at 06:00 UTC, and is
+built to be safe to repeat and honest when its inputs are not ready.
+
+\begin{cexample}[One idempotent SRI append]
+\label{ex:sri}
+A scheduled trigger posts to the kernel's tick endpoint, which pulls the latest
+closes, appends one row to the rolling panel, recomputes the index over a
+net-isolated computation, and persists it.
+\begin{lstlisting}[language=bash]
+POST /api/sri/cron-tick           # nightly; ?dry=1 is a health check that writes nothing
+\end{lstlisting}
+For the 2026-06-05 close the tick produced an index of \textbf{0.00709} over
+\textbf{272 directed pairs}. The append is idempotent: re-firing the tick for a
+date already present writes nothing rather than double-counting. It is
+self-healing: when the upstream feed serves a null close for hours after a
+session, the finite-close guard makes the tick skip that day honestly, and the
+next day's composition heals the gap rather than back-filling a guessed value.
+And it is observable without side effects: a dry-mode call recomputes and reports
+but does not write, so the feed's health can be probed at any time.
+\end{cexample}
+
+\noindent The two systemic-risk numbers in this paper bracket the feed's history
+and trace to the same record: the first honest static-panel point, \textbf{0.00849}
+over 306 directed pairs on 2026-03-18, which the \method{sri\_daily} evaluation
+row bands to $[0.00848, 0.00850]$; and this live tick, \textbf{0.00709} over 272
+pairs on 2026-06-05. The pair count differs because the live panel carries the
+markets with a finite close on the day, and the index recomputes in full from the
+stored panel each night rather than incrementing a cached figure -- the same
+re-runnable-from-source discipline that the synchronous, reproduction, and GPU
+traces above each demonstrate in their own way.
