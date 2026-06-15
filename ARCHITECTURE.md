@@ -12,10 +12,16 @@ number can be banded against an expectation and reproduced later. The governing
 rule: **a method is not in the catalogue until it ships with a failable test of
 its own output.** The catalogue and that suite of tests are the deliverable.
 
-As of 2026-06-13 the public registry serves **26 methods**. The most recent full
-suite (2026-06-12) recorded **26/26 passing**; the 26-method release deployed
-through Cloud Run revision `shssm-compute-00036-llf` (the prior machine-pinned
-full run was 23/23 at `shssm-compute-00032-c8q`).
+As of 2026-06-15 the public registry serves **26 methods**. The most recent full
+suite (2026-06-12) recorded **26/26 passing** (synchronous rows against the kernel,
+async rows as real tower jobs). The live release is Cloud Run revision
+`shssm-compute-00036-llf`, re-confirmed on 2026-06-15 serving the 26-method
+registry — `GET /health` → `{methods: 26, revision: shssm-compute-00036-llf,
+sandbox: "timeout", timeout_s: 90}`; `gcloud run services describe` → latest-ready
+`00036-llf`. The prior machine-pinned full run was 23/23 at
+`shssm-compute-00032-c8q`; the machine-written `STATE.md` MEASURED block still
+reflects that earlier pin until the next `scripts/state-refresh.mjs` run (the
+nightly loop that would refresh it is built but not yet installed in `cron`).
 
 ---
 
@@ -64,10 +70,16 @@ method + params  ─▶  schema validation  ─▶  bwrap sandbox  ─▶  Rscri
 - **No code from the user.** A request names a method from the fixed registry
   and a schema-validated parameter object. The runner scripts (`r/*.R`) are part
   of the repo and never user-supplied → **no arbitrary-code-execution surface.**
-- **Sandbox.** Each analysis runs under `bubblewrap` (`bwrap`): `--unshare-net`
-  (no network), `--ro-bind / /` (read-only FS), `--tmpfs /tmp` (fresh scratch),
-  `--die-with-parent`, wrapped in `timeout`. If `bwrap` is absent the runner
-  degrades to `timeout` alone.
+- **Sandbox.** Where `bwrap` is present — the workstation and local dev — each
+  analysis runs under `bubblewrap`: `--unshare-net` (no network), `--ro-bind / /`
+  (read-only FS), `--tmpfs /tmp` (fresh scratch), `--die-with-parent`, wrapped in
+  `timeout`. The deployed Cloud Run image ships **without** `bwrap`, so the live
+  kernel runs in `timeout`-only mode (`/health` → `sandbox: "timeout"`); there the
+  guarantee rests on the parameterised-only registry (no user code reaches a
+  shell), the read-only container image, and Cloud Run's own egress posture rather
+  than on `bwrap`. Either path, one method call is bounded by `COMPUTE_TIMEOUT_S`
+  (90 s in the deployed image, default 60 s) and a `124` exit is surfaced as an
+  explicit `timeout after Ns` error, never a silent hang.
 - **Data contract.** One JSON object in, one JSON object out. This is what lets
   the same method run identically in the cloud container, on the workstation,
   and in the test harness. The R helpers live in `r/_io.R`; emission is via a
@@ -78,6 +90,25 @@ method + params  ─▶  schema validation  ─▶  bwrap sandbox  ─▶  Rscri
   `$COMPUTE_REPO/papers/contagion-channels/data/G20.xlsx` (18 markets,
   2006–2026). Transfer entropy is computed on **log-returns (I(0)), never price
   levels (I(1))** — the stationarity gate, enforced by `live_unit_root`.
+
+**Kernel HTTP surface.** The deployed kernel exposes a small, rate-limited JSON API
+(CORS open for the static read-side pages); the read surfaces only ever *read* it.
+
+| Route | Method | Purpose | Cap |
+|---|---|---|---|
+| `/api/compute/run` | POST | run one registry method on schema-validated params | 20/min |
+| `/api/compute/catalog` | GET | the method + dataset registry the workbench binds to | — |
+| `/api/chat` | POST | AI analyst — Gemini 2.5 function-calling over the registry | 10/min · 50/day |
+| `/api/research` | POST | deep-research assistant (agentic run + grounded synthesis) | 5/min · 20/day |
+| `/api/situate` | POST | place a result against the verified record | 30/min |
+| `/api/claims` | GET | epistemic ledger (established / contested / superseded) | — |
+| `/api/sri/current` · `/history` · `/network` | GET | systemic-risk live-feed reads | — |
+| `/api/sri/cron-tick` | POST | the daily SRI append (Cloud Scheduler only; §A6) | — |
+| `/api/event` | POST | read-side telemetry | 60/min |
+| `/health` · `/metrics` | GET | liveness (methods · revision · sandbox) · counters | — |
+
+The two LLM routes (`/api/chat`, `/api/research`) share a daily budget; over cap
+they return `503 daily_capacity` with a reset hint, never a fabricated answer.
 
 ---
 
@@ -318,6 +349,59 @@ doc, not a nightly run report; it lives in `docs/`, not `compute-reports/`.
 
 ---
 
+## §A10 — Governed live-GCP capability layer (Track B, activated 2026-06-15)
+
+A governed route family on the kernel (`server/upgrade-capabilities.mjs`, zero-dep)
+behind `POST /api/upgrade/run {capability,params}` + `GET /api/upgrade/menu`. It extends
+the parameterised-only contract to managed-cloud services **without widening the
+execution surface**: the route matches a capability name against a fixed four-entry
+registry (unknown → `404`) and is **fetch-only — it never reaches `spawn`**, so §A1's RCE
+guard holds unchanged. Each capability is OFF unless its `CE_CAP_*` flag is exactly
+`1`/`true` (default-OFF, least-privilege), and every paid call runs the gate **flag →
+typed params → datastore-hole → spend ceiling** before the call; a rejection returns a
+coded error and spends nothing, never a fabricated answer.
+
+- **The governor.** `capBudget(cap, maxPerDay, units)` in `server/guards.mjs` generalises
+  `llmBudget` to N named per-UTC-day counters (billing in calls, or tokens for
+  embeddings); it reserves *before* the call, so over-cap returns `CAP_EXCEEDED`.
+  Process-local, so the fleet bound is `ceiling × max-instances (2)`; the 400-LLM/day
+  budget remains the outer backstop. **Verified to trip in production** (flash cap set to
+  1 → 2nd live call `CAP_EXCEEDED` → restored to 300). This generalises the §A3
+  core-budget lesson: a saturable resource ships with its governor wired before it is
+  reachable.
+
+| Capability | `CE_CAP_*` flag | Vertex surface | Ceiling | Status |
+|---|---|---|---|---|
+| embeddings | `…_EMBEDDINGS` | `text-embedding-004:predict` | 2,000,000 tok/day | **LIVE** (768-dim) |
+| grounded_search | `…_GROUNDED_SEARCH` | discoveryengine `:search` | 200 queries/day | **LIVE** (63-doc datastore) |
+| gemini_vertex | `…_GEMINI_VERTEX` | `aiplatform:generateContent` | 300 flash / 100 pro per day | **LIVE** |
+| batch_predict | `…_BATCH_PREDICT` | GCS-stage + `batchPredictionJobs` | 1 batch/day, ≤50k items | **live end-to-end** (exec verified 2026-06-15 after the delegation-SA IAM grant) |
+
+- **Grounded retrieval.** Vertex AI Search datastore `econstellar-literature` + engine
+  `econstellar-literature-search` over the `literature.papers` warehouse (63 docs,
+  imported as `{id, structData}` NDJSON — the direct BigQuery import fails for want of a
+  per-row `id`). It returns real `paper_id`s, so a grounded answer cites a real retrieved
+  passage. Distinct from `/api/research` *search-grounding* (Google-search-backed): this
+  is corpus retrieval over our own literature warehouse.
+- **batch_predict (honest hole).** Submit + GCS staging are live; the job then fails at
+  execution because Vertex routes embedding batch through a BigQuery delegation service
+  agent (`bqcx-…@gcp-sa-bigquery-condel`) that needs a one-time `roles/aiplatform.user`
+  grant (PI-gated). Recorded, not assumed away.
+- **Secret hygiene.** `scripts/secret-scan.mjs` blocks any secret-shaped *value* (output
+  redacted to a fingerprint) before commit/deploy; its pattern matches values, not
+  env-NAME references, so the engine's `GOOGLE_API_KEY=`-style handling does not
+  false-positive. The route logs `path+capability+code+ip` only — never params, never a
+  token; the OAuth bearer is minted at the metadata boundary and used in the
+  `Authorization` header only.
+- **Eval & dossiers.** `test/upgrade.test.mjs` (9/9): default-OFF, typed-param gate,
+  ceiling trips and mints no token, datastore-hole spends nothing, secret-scan
+  blocks-then-clears. Governance dossiers in `upgrade/` (inventory · cost model · threat
+  model · ledger · reverification · gate).
+- **Reversible.** Unset a `CE_CAP_*` env var (or set `0`) → `CAPABILITY_OFF`; delete the
+  datastore/engine → grounded cost to zero.
+
+---
+
 ## Repository layout
 
 ```
@@ -328,7 +412,9 @@ compute-engine/
 ├── docs/
 │   └── econstellar-compute-engine.tex   # the reference manuscript (+ .pdf)
 ├── server/
-│   ├── compute-server.mjs     # kernel: registry · validation · bwrap · /api/chat · /api/claims
+│   ├── compute-server.mjs     # kernel: registry · validation · bwrap · /api/chat · /api/upgrade
+│   ├── upgrade-capabilities.mjs # Track-B governed GCP capability layer (§A10, CE_CAP_* gated)
+│   ├── guards.mjs             # rate/concurrency/llmBudget + capBudget spend governor
 │   └── job-server.mjs         # tower :3030 (async jobs · core governance · GPU)
 ├── r/                         # R analyses (one JSON in → one JSON out)
 │   ├── _io.R                  # ce_emit, ce_ncores (core budget)
@@ -339,8 +425,13 @@ compute-engine/
 │   ├── equiv_gate.R           # bit-exactness gate (≤7e-16)
 │   └── REPORT.md              # GPU trial record
 ├── scripts/
-│   ├── nightly-loop.sh        # 6-step reboot-surviving self-check
+│   ├── nightly-loop.sh        # 6-step reboot-surviving self-check (cron 10 7 * * * UTC)
+│   ├── secret-scan.mjs        # Invariant-12 secret gate (blocks-then-clears; value-not-name)
 │   ├── gen-compute-report.mjs · publish-reports.mjs · state-refresh.mjs · claims-*.mjs
+├── test/
+│   ├── golden.test.mjs        # empirical-band regression (5/5)
+│   └── upgrade.test.mjs       # capability-layer governance eval (9/9)
+├── upgrade/                   # Track-B dossiers (inventory · cost · threat · ledger · reverif · gate)
 ├── compute-reports/           # nightly LaTeX run reports (+ narrative_<date>.tex)
 └── epistemic/                 # claims schema + seed
 ```
@@ -365,6 +456,21 @@ compute-engine/
 - **Registry:** 26 methods. Last 26/26 suite 2026-06-12 (deploy chain reached
   `shssm-compute-00036-llf`); last machine-pinned full run 23/23 at
   `shssm-compute-00032-c8q`.
+- **Capability layer (§A10, activated 2026-06-15):** image rebuilt by `cloudrun/deploy.sh`
+  (rev `shssm-compute-00038-g7g`; first attempt hit L2 — moved root dropped
+  `GOOGLE_API_KEY` — fixed by exporting it from `versiondevs/.env.local` and
+  redeploying); `CE_CAP_*` flags then flipped on the same image via
+  `gcloud run services update --update-env-vars` (no rebuild). `GET /api/upgrade/menu`
+  → all four `enabled:true`; all four live-verified end-to-end (batch execution verified
+  2026-06-15 after the one-off `roles/aiplatform.user` grant to the BigQuery delegation SA;
+  jobs `4764147582089822208` direct + `7024954595029811200` engine-route, both `SUCCEEDED`).
+- **Live verification (2026-06-15):** `GET /health` → `{ok:true, methods:26,
+  revision:"shssm-compute-00044-8qt", sandbox:"timeout", timeout_s:90}` (serving rev after
+  the flag flips; method count unchanged — the upgrade route is not a registry method).
+  Analysis panel
+  `$COMPUTE_REPO/papers/contagion-channels/data/G20.xlsx` spans 2006-01-12 →
+  2026-03-18 (18 markets) and is byte-hashed at kernel and tower startup so a
+  result carries its data state.
 - **Canonical jobs (2026-06-12):** `job_20260612_0f2f0fd5` (`namh_pipeline`,
   B=200, seed 42, 1222 s); `job_20260612_fe0c4f06` / `job_20260612_c0398d0f`
   (`soch_robustness` seeded anchor + independent re-run, identical tuple).
