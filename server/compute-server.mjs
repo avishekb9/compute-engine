@@ -26,6 +26,11 @@ import { createHash } from "node:crypto";
 import { dirname, join, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { cacheKey, cacheGet, cacheSet, cacheGetStale, rateLimit, acquire, release, concurrencyState, dailyLimit, llmBudget, llmBudgetState, sweep, metrics, countMethod, countEvent, metricsSnapshot, clientIp, logLine } from "./guards.mjs";
+// Track-B upgrade capabilities (Vertex embeddings / grounding / Gemini-on-Vertex /
+// batch). DEPLOY-READY BUT INERT: every capability flag defaults OFF, so the route
+// below returns CAPABILITY_OFF until a CE_CAP_* flag is set AND the kernel redeployed
+// (PI-gated). Governance lives in the module; this is only the registered surface.
+import { runCapability, capabilityMenu } from "./upgrade-capabilities.mjs";
 
 // per-IP rate limits (requests/min); /health + /catalog + /metrics unlimited
 const RATE = { "/api/compute/run": 20, "/api/chat": 10, "/api/research": 5 };
@@ -369,6 +374,18 @@ const METHODS = {
     paper: null, deprecated: false,
     changelog: [{ version: "1.0.0", note: "daily KSG-TE-network connectivity SRI (Vision Phase 30); reuses ksg_te's validated point estimator over a rolling window" }],
   },
+  news_attention_te: {
+    runner: "r", script: "news_attention_te.R",
+    label: "News-Attention Transfer Entropy — directed network (Frontiers III)",
+    category: "Information Flow · News-Attention Network (Frontiers III)",
+    desc: "Directed KSG/Frenzel-Pompe transfer entropy (max-norm CMI, Kraskov k=4, lag=1) across news-attention topics, on the `news_attention` panel (15 channel-tagged topics, daily log-changes 2018–2026). The estimable directed observation network of Kranton & McAdams (2020)'s market for news: an edge i->j means attention to topic i carries predictive information about attention to topic j beyond j's own past. Reuses the SAME validated estimator as ksg_te (shared verbatim from _ksg_core.R). DETERMINISTIC — raw TE, no surrogates → reproduce-eligible: the engine's CPU estimator reproduces the working paper's GPU-computed TE_matrix to the published precision (TE(inflation→election)=0.065781, 6dp exact). Returns the full directed TE matrix + raw (ungated) strength rankings; pass exactly two series [src,dst] for one ordered pair. The published significance-gated network (significant-edge adjacency, density, BH-FDR) needs IAAFT surrogates and is the async ksg_te method run with dataset=news_attention.",
+    dataset: "news_attention",
+    params: { series: { type: "series", n: [2, 15], optional: true }, k: { type: "int", optional: true }, lag: { type: "int", optional: true } },
+    version: "1.0.0", capability: "information-flow", primitives: ["P3"], long_running: false, min_obs: 200,
+    returns: ["method", "dataset", "k", "lag", "n_series", "n_obs", "n_pairs", "topics", "te_matrix", "strongest_edge", "raw_out_strength_top", "raw_in_strength_top", "compute_path", "gpu_device", "runtime_s", "deterministic", "note", "interpretation"],
+    paper: null, deprecated: false,
+    changelog: [{ version: "1.0.0", note: "Frontiers III directed news-attention TE network; deterministic raw max-norm KSG (shared _ksg_core), reproduces the paper's TE_matrix at published precision; significance via async ksg_te on dataset=news_attention" }],
+  },
 };
 
 // ── panel registry (Tier C.1) ─────────────────────────────────────────────────
@@ -410,6 +427,17 @@ const CC_PKG_HASH = (() => {
     try { if (existsSync(c)) return createHash("sha256").update(readFileSync(c)).digest("hex"); } catch {}
   }
   return CC_PKG_SHA256;   // installed-then-deleted in the image: use the verified hash
+})();
+
+// News-attention panel (Frontiers III): 15 channel-tagged topics, daily log-changes
+// 2018-01-02 -> 2026-06-01 (3054 rows). Names match the CSV header order EXACTLY —
+// used by validate() to accept series for news_attention_te. Three planned topics
+// (bond_yields/banking_crisis/interest_rate) were not retrieved and are absent.
+const NEWS_ATTENTION_SERIES = ["tariff","trade_war","supply_chain","export_controls","stock_market","financial_stability","sanctions","military_conflict","election","geopolitical_risk","consumer_confidence","recession","market_volatility","inflation","central_bank"];
+const NEWS_PATH = join(REPO, "papers/news-networks/data/news_attention_logchange.csv");
+const NEWS_HASH = (() => {
+  try { return createHash("sha256").update(readFileSync(NEWS_PATH)).digest("hex"); }
+  catch (e) { console.error(`[panel] could not hash news panel at ${NEWS_PATH}: ${e.message}`); return null; }
 })();
 
 const DATASETS = {
@@ -480,6 +508,27 @@ const DATASETS = {
     source: "namh package bundled extdata (G20_24_returns_yahoo.rds)",
     version: "0.1.0",                   // namh package version = data vintage
     sha256_hash: G20_24_HASH,           // sha256 of the bundled rds
+    access: "public",
+  },
+  // News-attention panel (Frontiers III). Daily log-changes of news-attention volume
+  // intensity, 15 channel-tagged topics, already stationarised (median ADF p ~ 0) so
+  // the KSG estimator runs on it directly — like g20 (returns), unlike a price level.
+  // Derived from the raw attention panel via build_network.py::stationarise; this CSV
+  // is the byte-identical intermediate the published TE_matrix was estimated on.
+  // Provenance: papers/news-networks/data/README.md.
+  news_attention: {
+    id: "news_attention",
+    label: "News-attention daily log-changes (15 topics, 2018–2026)",
+    description: "Daily log-changes of news-attention volume intensity across 15 channel-tagged news topics (Trade / Financial / Geopolitical / Behavioural / Monetary Policy)",
+    markets: NEWS_ATTENTION_SERIES.length,   // 15
+    series: NEWS_ATTENTION_SERIES,
+    n: 3054,
+    frequency: "daily",
+    start: "2018-01-02",
+    end: "2026-06-01",
+    source: "News-attention volume intensity from a global open news-monitoring corpus, aggregated by the NEURICX research engine; log-changed (build_network.py::stationarise)",
+    version: "2026-06",                 // vintage of this panel snapshot
+    sha256_hash: NEWS_HASH,             // file-byte sha256, cached at startup
     access: "public",
   },
 };
@@ -1421,6 +1470,36 @@ const server = createServer(async (req, res) => {
       logJob(rec);
       logLine({ path: "/api/compute/run", method: payload.method, series: v.clean.series, symbol: v.clean.symbol, ip, ms, cached: fromCache, error: r.error || null });
       return send(r.ok ? 200 : 500, "application/json", JSON.stringify({ ...r, ms, cached: fromCache, job_id: rec.id, provenance: provenance(payload.method, v.method, v.clean) }));
+    });
+    return;
+  }
+
+  // ── Track-B upgrade surface (registered, governed, DEPLOY-READY BUT INERT) ──
+  // GET /api/upgrade/menu  — read-only: which capabilities exist + their flag state
+  // (every flag defaults OFF, so this lists the menu without enabling anything).
+  if (u.pathname === "/api/upgrade/menu" && req.method === "GET") {
+    return send(200, "application/json", JSON.stringify({ ok: true, capabilities: capabilityMenu() }));
+  }
+  // POST /api/upgrade/run { capability, params } — runs ONE capability through the
+  // module's governance (flag -> typed params -> datastore hole -> spend ceiling).
+  // With all flags OFF this returns 503 CAPABILITY_OFF and spends nothing; the paid
+  // path is reached only after the PI flips a CE_CAP_* flag and redeploys.
+  if (u.pathname === "/api/upgrade/run" && req.method === "POST") {
+    if (!rateLimit(ip, "/api/upgrade/run", 10).ok) return send(429, "application/json", JSON.stringify({ error: "rate_limit", message: "Too many requests — slow down." }));
+    let body = "", tooBig = false;
+    req.on("data", d => { if (body.length + d.length > MAX_BODY_BYTES) { tooBig = true; return; } body += d; });
+    req.on("end", async () => {
+      if (tooBig) return send(413, "application/json", JSON.stringify({ error: "payload_too_large", message: "Request body too large." }));
+      let payload;
+      try { payload = JSON.parse(body || "{}"); } catch { return send(400, "application/json", JSON.stringify({ ok: false, error: "bad JSON body" })); }
+      metrics.requests_total++;
+      let r;
+      try { r = await runCapability(payload.capability, payload.params || {}); }
+      catch (e) { metrics.errors_total++; logLine({ path: "/api/upgrade/run", ip, error: e.message }); return send(500, "application/json", JSON.stringify({ ok: false, error: e.message })); }
+      if (!r.ok) metrics.errors_total++;
+      // log the capability + coded outcome only — never params, never any secret
+      logLine({ path: "/api/upgrade/run", capability: String(payload.capability || ""), code: r.code || null, ip });
+      return send(r.http || (r.ok ? 200 : 500), "application/json", JSON.stringify(r));
     });
     return;
   }

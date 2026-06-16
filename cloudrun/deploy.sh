@@ -21,11 +21,13 @@ DATA="$REPO/papers/contagion-channels/data/G20.xlsx"
 SOCHPKG="$REPO/papers/SOCH/code/sochcontagion_0.1.0.tar.gz"   # published method for soch_profile
 CCPKG="$REPO/papers/contagion-channels/code/contagionchannels_0.1.3.tar.gz"   # published method for channel_attribution
 NAMHPKG="$REPO/papers/namh/code/namh_0.1.0.tar.gz"   # published methods for namh_hurst / namh_te (+ bundled g20_24 extdata)
+NEWS="$REPO/papers/news-networks/data/news_attention_logchange.csv"   # news_attention dataset (Frontiers III news-attention TE)
 
 [ -f "$DATA" ] || { echo "ERROR: G20 data not found at $DATA"; exit 1; }
 [ -f "$SOCHPKG" ] || { echo "ERROR: sochcontagion tarball not found at $SOCHPKG"; exit 1; }
 [ -f "$CCPKG" ] || { echo "ERROR: contagionchannels tarball not found at $CCPKG"; exit 1; }
 [ -f "$NAMHPKG" ] || { echo "ERROR: namh tarball not found at $NAMHPKG (build: R CMD build papers/namh/code/namh-pkg)"; exit 1; }
+[ -f "$NEWS" ] || { echo "ERROR: news-attention panel not found at $NEWS"; exit 1; }
 
 # GOOGLE_API_KEY enables the /api/chat Gemini analyst. Read from env or
 # versiondevs/.env.local (one level above ivy-fineco); never printed/committed.
@@ -44,6 +46,8 @@ cp "$CCPKG" "$BUILD/contagionchannels_0.1.3.tar.gz"
 cp "$NAMHPKG" "$BUILD/namh_0.1.0.tar.gz"
 mkdir -p "$BUILD/data-root/papers/contagion-channels/data"
 cp "$DATA" "$BUILD/data-root/papers/contagion-channels/data/G20.xlsx"
+mkdir -p "$BUILD/data-root/papers/news-networks/data"
+cp "$NEWS" "$BUILD/data-root/papers/news-networks/data/news_attention_logchange.csv"
 
 echo "Build context: $BUILD"
 gcloud run deploy "$SERVICE" \

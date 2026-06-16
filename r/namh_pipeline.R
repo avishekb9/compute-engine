@@ -78,6 +78,30 @@ top3 <- function(v) {
   lapply(o, function(i) list(market = names(v)[i], value = as.numeric(v[i])))
 }
 
+## GAME-SPECTRAL DIAGNOSTICS (NAMH x Network-Economics programme, Theorem B).
+## The HWTE game is strategic COMPLEMENTS (A>=0 enters the potential with a + sign),
+## so the binding interior-well-posedness scalar is lambda_MAX((A+A^T)/2) < 1 -- the
+## LARGEST symmetric-part eigenvalue (BKD p.901: highest eigenvalue governs pure
+## complements), NOT |lambda_min| (the substitutes object). lambda_min_sym is emitted
+## only as the labelled substitutes counterfactual. asymmetry_index > 0 certifies the
+## game is NOT a potential game (Monderer-Shapley, Thm B(b)); support_reciprocity < 1
+## certifies the support is sign-asymmetric => not diagonally symmetrizable (Thm B(e)).
+game_spectral <- function(A) {
+  if (!is.matrix(A) || nrow(A) != ncol(A) || any(!is.finite(A)))
+    return(list(lambda_max_sym = NA_real_, lambda_min_sym = NA_real_,
+                asymmetry_index = NA_real_, support_reciprocity = NA_real_,
+                wellposed_margin = NA_real_))
+  Asym <- (A + t(A)) / 2
+  ev <- tryCatch(eigen(Asym, symmetric = TRUE, only.values = TRUE)$values,
+                 error = function(e) NA_real_)
+  fro <- function(M) sqrt(sum(M * M))
+  se <- sum(A[row(A) != col(A)] > 0)
+  recip <- if (se > 0) sum(A > 0 & t(A) > 0 & row(A) != col(A)) / se else NA_real_
+  list(lambda_max_sym = max(ev), lambda_min_sym = min(ev),
+       asymmetry_index = if (fro(A + t(A)) > 0) fro(A - t(A)) / fro(A + t(A)) else NA_real_,
+       support_reciprocity = recip, wellposed_margin = 1 - max(ev))
+}
+
 per_window <- list()
 for (k in seq_along(res$windows)) {
   w <- res$windows[[k]]
@@ -110,6 +134,7 @@ for (k in seq_along(res$windows)) {
     }
     if (length(out)) out else NULL
   }, error = function(e) NULL)
+  gs <- tryCatch(game_spectral(w$HWTE), error = function(e) NULL)
   per_window[[length(per_window) + 1L]] <- list(
     window_index = wi,
     date_start = as.character(w$window$start), date_end = as.character(w$window$end),
@@ -130,6 +155,9 @@ for (k in seq_along(res$windows)) {
     H = list(mean = mean(w$H[is.finite(w$H)]), min = min(w$H[is.finite(w$H)]), max = max(w$H[is.finite(w$H)])),
     communities = if (is.null(comm)) NA else comm,
     centralities = if (is.null(cents)) NA else cents,
+    ## Theorem B game-spectral diagnostics (lambda_max_sym is the binding complements
+    ## well-posedness scalar; lambda_min_sym is the substitutes counterfactual only)
+    game_spectral = if (is.null(gs)) NA else gs,
     degenerate = is.finite(n_edges) && n_edges == 0)
 }
 

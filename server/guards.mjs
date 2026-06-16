@@ -91,6 +91,32 @@ export function llmBudgetState() {
   return d !== llmDay ? { used: 0, max: MAX_LLM_PER_DAY } : { used: llmCount, max: MAX_LLM_PER_DAY };
 }
 
+// ── Per-capability daily spend ceiling (Invariants 11 & 15) ──────────────────
+// A reusable generalisation of llmBudget for the Track-B upgrade capabilities:
+// each named capability carries its own per-UTC-day counter, incremented BEFORE
+// the paid call by the unit it bills in — calls (units=1) for query-priced
+// surfaces, tokens for embeddings. Over-cap returns { ok:false } so the caller
+// emits a CODED CAPACITY ERROR and spends nothing (never a fabricated answer,
+// Invariant 11). This is the 22-core-hang lesson generalised: the governor that
+// bounds a finite resource is wired before that resource is reachable.
+const _capDay = {};   // capName -> "YYYY-MM-DD" (UTC) of the live window
+const _capUsed = {};  // capName -> units consumed in that window
+export function capBudget(capName, maxPerDay, units = 1) {
+  const d = utcDay();
+  if (_capDay[capName] !== d) { _capDay[capName] = d; _capUsed[capName] = 0; }
+  const used = _capUsed[capName];
+  // A single request that alone exceeds the daily cap is rejected (used stays 0).
+  if (used + units > maxPerDay) return { ok: false, cap: capName, used, want: units, max: maxPerDay };
+  _capUsed[capName] = used + units;
+  return { ok: true, cap: capName, used: _capUsed[capName], want: units, max: maxPerDay };
+}
+export function capBudgetState(capName) {
+  const d = utcDay();
+  return _capDay[capName] !== d ? { cap: capName, used: 0 } : { cap: capName, used: _capUsed[capName] || 0 };
+}
+// test-only: reset a capability's counter so an eval can drive the ceiling deterministically
+export function capBudgetReset(capName) { delete _capDay[capName]; delete _capUsed[capName]; }
+
 // periodically drop empty/expired buckets so the maps don't grow unbounded
 export function sweep() {
   const now = Date.now();

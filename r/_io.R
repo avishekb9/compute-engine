@@ -21,7 +21,15 @@ DATASETS <- list(
   ## Sentinel = the repo copy (exists locally). In the Cloud Run image (COMPUTE_REPO=
   ## /app/data-root, no papers/ tree) ce_returns falls back to the INSTALLED namh
   ## package's bundled copy via system.file — both byte-identical (verified 2026-06-09).
-  g20_24 = file.path(REPO, "papers/namh/code/namh-pkg/inst/extdata/G20_24_returns_yahoo.rds")
+  g20_24 = file.path(REPO, "papers/namh/code/namh-pkg/inst/extdata/G20_24_returns_yahoo.rds"),
+  ## News-attention panel (Frontiers III): daily log-changes of news-attention
+  ## volume intensity, 15 channel-tagged topics, 2018-01-02 -> 2026-06-01 (3054
+  ## rows). Already stationarised (median ADF p ~ 0), so the KSG estimator runs on
+  ## it directly, exactly as g20 is stored as log returns. Provenance + transform in
+  ## papers/news-networks/data/README.md (build_network.py::stationarise). CSV so the
+  ## byte-identical intermediate the published TE_matrix was estimated on is the
+  ## dataset; ce_returns reads it via the .csv branch below.
+  news_attention = file.path(REPO, "papers/news-networks/data/news_attention_logchange.csv")
 )
 
 ce_fail <- function(msg) {
@@ -104,6 +112,12 @@ ce_returns <- function(p) {
     obj   <- readRDS(path)
     dates <- as.Date(zoo::index(obj))
     mat   <- as.matrix(zoo::coredata(obj))
+  } else if (grepl("\\.csv$", path, ignore.case = TRUE)) {
+    ## plain CSV: first column ISO dates (yyyy-mm-dd), remaining columns numeric.
+    ## Used by the news_attention panel (already stationarised log-changes).
+    d     <- utils::read.csv(path, check.names = FALSE, stringsAsFactors = FALSE)
+    dates <- as.Date(d[[1]])
+    mat   <- as.matrix(d[, -1, drop = FALSE])
   } else {
     d     <- suppressMessages(read_excel(path))
     dates <- as.Date(d[[1]], format = "%d/%m/%Y")
