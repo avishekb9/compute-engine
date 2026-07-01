@@ -170,3 +170,83 @@ Per capability, when its eval is green and (for grounded_search) its datastore e
 
 One capability at a time; the next flag flips only after the prior is green in
 production. Until then the engine runs exactly as before — all flags OFF.
+
+## Build 2026-06-16 — capability 5: `multimodel` (Claude on Vertex, second-opinion review)
+
+A fifth governed capability was added: a **different model family** (Anthropic Claude via
+the Vertex Model Garden `rawPredict` surface) that cross-checks a finished `/api/research`
+answer. It follows the exact same contract as caps 1–4 — default-OFF flag, typed-param gate,
+pre-registered ceiling reserved before the paid call, coded errors that spend nothing — and
+**Claude originates no number**: the verify prompt forbids inventing or recomputing any
+value, so every number still traces to the registry `run_analysis` (Invariant 13).
+
+| # | Capability | Route / flag (default OFF) | Typed params | Ceiling (env → default) | Governor | Eval | execute() | Status |
+|---|---|---|---|---|---|---|---|---|
+| 5 | **multimodel** (Claude on Vertex, `:rawPredict`) | `/api/upgrade/run` · `CE_CAP_MULTIMODEL`; also wired into `/api/research` as a best-effort `verification` field | `{contents:string}`, ≤`CE_MULTIMODEL_MAX_CHARS`→100000 | `CE_MULTIMODEL_PER_DAY` → 50 calls/day | `capBudget("multimodel",max,1)` reserves BEFORE call | U-E1,E6,**E9** | real REST `:rawPredict` (Anthropic Messages body, `anthropic_version:"vertex-2023-10-16"`, model in URL) | **WIRED+OFF / HOLE** |
+
+**Integration into `/api/research` (behaviour-preserving).** After the engine builds its
+answer it calls `verifyAnswer()` (best-effort, 45 s timeout race). When `CE_CAP_MULTIMODEL`
+is OFF — the default — `runCapability("multimodel", …)` returns `CAPABILITY_OFF` and
+`verifyAnswer` returns `null`: no `verification` key is added and the answer is returned
+unchanged. This mirrors the existing literature pre-search degrade-silently pattern. No
+method was added → `/health` method count is unchanged.
+
+**HOLE (Invariant 3 — recorded, not filled).** The Anthropic publisher models are **not yet
+enabled in Model Garden** for `hopeful-flash-485308-v3`. A read-only probe on 2026-06-16
+confirmed this: `:rawPredict` returned **HTTP 404 "your project does not have access to it"**
+(no inference charged). Enablement is a one-time console action that accepts Anthropic's
+terms — there is **no `gcloud`/CLI path** (`gcloud ai model-garden models` exposes only
+`deploy`/`list`/`list-deployment-config`). Defaults are the current Sonnet
+`claude-sonnet-4-6` on the recommended `global` endpoint (no regional premium); model and
+location are env-set (`CE_MULTIMODEL_MODEL`, `CE_MULTIMODEL_LOCATION`) so changing them
+needs no code change. Until enablement a flag-ON call returns the upstream 404; marked hole.
+
+**UPDATE 2026-06-16 (PI enabled the model; smoke test → quota hole).** The PI enabled the
+Anthropic models in Model Garden. A live `rawPredict` smoke test then showed the model is
+**recognised** (enablement worked) but returns **HTTP 429 `RESOURCE_EXHAUSTED`** — the
+`global_online_prediction_requests_per_base_model` quota for the Anthropic base models is
+**0 / unprovisioned** (uniform across `claude-sonnet-4-6`, `claude-opus-4-8`,
+`claude-haiku-4-5`; `claude-fable-5` separately needs publisher data-sharing). Sonnet 4.6 is
+**global-endpoint-only** (all of us-east5/us-east1/us-central1/europe-west1/us-east4 → 404),
+so there is no regional quota pool to fall back on. **Code fix applied this session:** the
+`global` endpoint host is the UNPREFIXED `aiplatform.googleapis.com` (the `<loc>-aiplatform`
+template only fits regional) — `execute()` now special-cases it. **Remaining gate:** a
+quota-increase request for the base model (owner console action; the engine's 50-calls/day
+cap means a small QPM is ample). Still a marked hole until quota is granted and the smoke
+test returns `code:OK`.
+
+**UPDATE 2026-06-16b (PI purchased Opus 4.8; default → `claude-opus-4-8`; quota still the gate).**
+The PI completed the Model Garden / Cloud Marketplace purchase of **Claude Opus 4.8** (Anthropic
+terms accepted — console confirmed "Successfully purchased Claude Opus 4.8"). A re-run smoke test
+against `claude-opus-4-8` on `global` (and on us-east5 / us-east1 / europe-west1 / asia-southeast1)
+**still returns HTTP 429** — the Marketplace purchase grants *access* but does **not** allocate
+online-prediction quota; `(global_)online_prediction_requests_per_base_model` for
+`anthropic-claude-opus` remains 0. The capability **default model is now `claude-opus-4-8`** (the
+model the PI enabled, and the strongest reviewer), env-overridable to `claude-sonnet-4-6`. The build
+is committed and governance-green (10/10); the ONLY remaining gate is a **quota-increase request**
+to Google for that base-model online-prediction quota, after which a live smoke should return
+`code:OK`.
+
+**Verification (failable, reproducible).**
+```
+node test/upgrade.test.mjs        → 10/10 upgrade governance checks passed   (exit 0)
+  (U-E1 now asserts 5 caps default OFF; U-E9 added:)
+  U-E9  multimodel → CAPABILITY_OFF (flag off), BAD_PARAMS (empty contents),
+        ceiling trips CAP_EXCEEDED at the cap, token spy NOT called (no mint)
+node --check server/compute-server.mjs server/upgrade-capabilities.mjs → syntax OK
+```
+No paid call is reachable in the eval: OFF/BAD return before `execute`, the happy path uses
+`dryRun`, and the over-cap path is handed the throwing token spy.
+
+**Cost.** Bounded ≤ ~$4.5/day (50 calls × ~25k-in/1k-out Sonnet-class; see `COST_MODEL.md`).
+Worst-case all-surfaces total updated to ~Rs. 2,284/day, still ~8.5 months inside headroom.
+
+**PI-gated activation (NOT executed here).** (1) **Enable `Claude Sonnet 4.6` in Vertex AI
+Model Garden** for the project and accept Anthropic's terms — console only, PI/owner action
+(`avishekb@iitbbs.ac.in` owns the project; `console.cloud.google.com/vertex-ai/model-garden`
+→ search "Claude Sonnet 4.6" → Enable); (2) pre-deploy secret-scan; (3) append
+`CE_CAP_MULTIMODEL=1` (+ optional `CE_MULTIMODEL_MODEL` / `CE_MULTIMODEL_LOCATION` /
+`CE_MULTIMODEL_PER_DAY`) to the canonical `cloudrun/deploy.sh` env set and deploy; (4) live
+smoke test via `POST /api/upgrade/run {capability:"multimodel", params:{contents:"…"}}`;
+(5) reversible by removing the flag and redeploying. Until then the engine runs exactly as
+before — flag OFF.

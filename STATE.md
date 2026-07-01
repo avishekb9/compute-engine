@@ -9,16 +9,20 @@ is loud about drift. Sessions should read this file before acting on the engine.
 ## MEASURED
 
 <!-- MEASURED:BEGIN (machine-written by scripts/state-refresh.mjs; do not hand-edit) -->
-- refreshed: 2026-06-12T02:33Z
-- engine: rev `shssm-compute-00032-c8q` · methods 23
-- evals: 23/23 pass (0 fail, 0 pending), run 2026-06-12T02:33Z at shssm-compute-00032-c8q
-- sri feed: 2026-06-09 SRI 0.007146 (17 markets, 272 pairs)
+- refreshed: 2026-07-01T02:23Z
+- engine: rev `shssm-compute-00048-lxc` · methods 31
+- evals: 31/31 pass (0 fail, 0 pending), run 2026-07-01T02:23Z at shssm-compute-00048-lxc
+- sri feed: 2026-06-29 SRI 0.006308 (17 markets, 272 pairs)
 - problems: none
 <!-- MEASURED:END -->
 
 ## DRIFT (machine-appended, newest first)
 
 <!-- DRIFT:APPEND -->
+- 2026-06-24T02:30Z: revision UNREACHABLE -> shssm-compute-00048-lxc
+- 2026-06-23T02:29Z: engine unreachable: fetch failed · 5 eval failure(s) in /home/ecolex/engine-work/compute-engine/../econstellar/evals.json · sri/current failed: fetch failed
+- 2026-06-19T07:31Z: revision shssm-compute-00045-ns8 -> shssm-compute-00048-lxc · methods 27 -> 31
+- 2026-06-17T02:19Z: revision shssm-compute-00032-c8q -> shssm-compute-00045-ns8 · methods 23 -> 27
 - 2026-06-12T02:09Z: methods 0 -> 23
 
 ## LEDGER (session-appended; humans and agents)

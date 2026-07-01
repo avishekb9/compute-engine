@@ -63,6 +63,7 @@ COPY web ./web
 COPY py ./py
 COPY neuricx ./neuricx
 COPY data-root ./data-root
+COPY knowledge-bank.json ./knowledge-bank.json
 
 # COMPUTE_REPO points at the bundled data root so _io.R finds
 # papers/contagion-channels/data/G20.xlsx

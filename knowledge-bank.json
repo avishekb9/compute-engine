@@ -1,0 +1,907 @@
+{
+  "schema": "econstellar.knowledge-bank/v1",
+  "purpose": "Machine-readable manifest of the Econstellar academic games: their certified-strong results, shared invariants, internal cross-links, formal layer, and references. The internal-linking substrate and the queryable surface for MCP-based info exchange. This first instance covers the FRONTIERS V control/evolution series (verified this session); designed to extend to every Econstellar academic game (see _extension).",
+  "generated": "2026-06-18",
+  "shared_invariants": {
+    "plant": "x_{t+1}=Phi x_t + B_c u_t + C w; Phi=(1-eta)I-eta D G; B=eta D G>=0; Gtilde=D^{1/2} G D^{1/2} symmetric (D=I in calibration)",
+    "spectral_identities": "r(B)=eta*lambda_max(Gtilde)=(1-eta)-lambda_min(Phi); |lambda_min(Gtilde)|=(lambda_max(Phi)-(1-eta))/eta",
+    "turnpike_eta_bar": 0.9675,
+    "turnpike_root": 0.4603,
+    "cascade_barrier_1_over_beta_c": 1.25,
+    "planner_beta": 0.95,
+    "cascade_beta_c": 0.8,
+    "calibrated_anchors": {
+      "n": 26,
+      "eta_cal": 1.0134,
+      "lambda_max_Gtilde": 0.4757,
+      "rB_GFC": 0.4821,
+      "rB_COVID": 0.4623,
+      "rB_calm": 0.2564,
+      "n_edges": 49
+    },
+    "master_seed": 20260618
+  },
+  "certification_ledger": {
+    "STRONG": [
+      "eta",
+      "sigma(Phi)=(1-eta)-eta*sigma(Gtilde)",
+      "|lambda_min(Gtilde)|",
+      "r(B)",
+      "Perron projection (node s_i, edge rank)",
+      "connectivity intensity a and r(a)"
+    ],
+    "PROXY": [
+      "F cascade fragility (requires explicit beta_c)"
+    ],
+    "UNIDENTIFIED_never_a_target": [
+      "named G_ij",
+      "delta_i",
+      "single named-link direction"
+    ]
+  },
+  "games": [
+    {
+      "id": "frontiers-v1-control",
+      "slot": "V.1",
+      "title": "Control of a Recovered Dependence Network (static)",
+      "status": "delivered+gated",
+      "dir": "frontiers-v/V1-control",
+      "key_results": {
+        "eta_control_hits_rB_target_exactly": true,
+        "edge_control": "convex programme, Perron gradient v_i v_j",
+        "objective_divergence": "r(B)/F fall monotone as eta falls but stationary activity U-shaped; interior optimum eta~0.967",
+        "rB_regime": {
+          "GFC": 0.482,
+          "COVID": 0.462,
+          "calm": 0.256
+        }
+      },
+      "refs": [
+        "Galeotti-Golub-Goyal 2020 Econometrica 88(6):2445-2471",
+        "Boyd-Vandenberghe 2004"
+      ],
+      "cross_links": [
+        "frontiers-iv",
+        "frontiers-v2-recursive",
+        "mst-contagion"
+      ]
+    },
+    {
+      "id": "frontiers-v2-recursive",
+      "slot": "V.2",
+      "title": "Recursive Control of a Recovered Dependence Network",
+      "status": "delivered+gated+live",
+      "dir": "frontiers-v/V2-recursive-control",
+      "key_results": {
+        "T1_LQ_Riccati_certainty_equivalence": "residual 0; closed-loop rho 0.424 stabilises a stressed plant (uncontrolled cost inf); cost 540<723<inf",
+        "T2_Bellman_contraction": {
+          "ratio": 0.95,
+          "value_iteration_steps": 406
+        },
+        "T3_Hamiltonian_turnpike": {
+          "eta_bar": 0.9675,
+          "saddle_jacobian_eigs": [
+            -0.015,
+            0.066
+          ]
+        },
+        "T4_barrier": {
+          "beta_c_rB_eq_1": 1.25,
+          "period_doubling_flip_onset": 2.745,
+          "largest_lyapunov": 0.66
+        }
+      },
+      "formal": {
+        "lean_module": "Sochlean.RecursiveControl",
+        "status": "lake build exit 0; 15 proved; 1 honest sorry (n-dim DARE existence)"
+      },
+      "refs": [
+        "SLP 1989",
+        "Hansen-Sargent 2014",
+        "Ljungqvist-Sargent 2018",
+        "Blackwell 1965",
+        "Bellman 1957"
+      ],
+      "cross_links": [
+        "cid-dynamics-ii",
+        "frontiers-iv",
+        "frontiers-v1-control",
+        "frontiers-v3-intervene",
+        "frontiers-v5-evolutionary"
+      ]
+    },
+    {
+      "id": "frontiers-v3-intervene",
+      "slot": "V.3",
+      "title": "Intervening on a Recovered Dependence Network (external authority tracking)",
+      "status": "delivered+gated+live",
+      "dir": "frontiers-v/V3-intervene",
+      "key_results": {
+        "T1_LQ_feedback_feedforward": "certainty equivalence exact; tracking error 0.833->0.005 as weight rises (full-rank B_c)",
+        "T2_Perron_steepest_direction": "grad=eta=1.013; budget ratios 1.06/1.69",
+        "T3_two_cost_split": "C_track min at status quo; C_sys U-shaped min at turnpike eta_bar=0.9675 (root 0.460)",
+        "T4_identification_limit": {
+          "spectral_counterfactual_invariant": 3.3e-16,
+          "named_edge_Crude_JPY_differs": 0.0151
+        }
+      },
+      "live_operators": [
+        "lq_regulator",
+        "turnpike",
+        "bellman_value",
+        "fragility_barrier"
+      ],
+      "engine_rev": "00046-mbx (31 methods)",
+      "refs": [
+        "Anderson-Moore 1990",
+        "Galeotti-Golub-Goyal 2020 (softened)"
+      ],
+      "cross_links": [
+        "frontiers-iv",
+        "frontiers-v2-recursive",
+        "frontiers-v5-evolutionary"
+      ]
+    },
+    {
+      "id": "cid-dynamics-ii",
+      "slot": "CID-II",
+      "title": "Scaled and Learning Control of a Recovered Dependence Network",
+      "status": "delivered+gated",
+      "dir": "frontiers-v/CID-Dynamics-II",
+      "key_results": {
+        "T1_ergodic": {
+          "rho_A_cl": 0.2393,
+          "Sigma_inf_trace": 26.167,
+          "avg_cost_g": 26.34,
+          "restricted_instrument_existence_boundary": "k>=k*=#supercritical modes"
+        },
+        "T2_decentralised": "|F_ij| 5-hop decay; r-local r=O(log 1/eps)",
+        "T3_learned": "regret->0 as window grows; (k,r) competitive surface CR<=1+O(rho_S^r)+O(rho_T^k)",
+        "T4_regime_taxonomy": {
+          "turnpike_brent": 0.96796,
+          "saddle_eigs": [
+            -0.015,
+            0.066
+          ],
+          "regimes": [
+            "stable",
+            "period-doubled",
+            "chaotic",
+            "non-stationary"
+          ]
+        }
+      },
+      "refs": [
+        "Gan 2023 (thesis)"
+      ],
+      "cross_links": [
+        "frontiers-iv",
+        "frontiers-v2-recursive",
+        "frontiers-v5-evolutionary"
+      ],
+      "anti_salami_note": "fixed-plant state-costate CONTROL flow; distinct from V.5's evolutionary SELECTION flow"
+    },
+    {
+      "id": "frontiers-v4-design",
+      "slot": "V.4",
+      "title": "DESIGN (spectral engineering) [RESERVED, forthcoming]",
+      "status": "reserved-unwritten",
+      "dir": "frontiers-v/V4-design",
+      "key_results": {},
+      "note": "Reserved slot for the network-DESIGN game (a distinct game from the evolutionary paper). To be written.",
+      "cross_links": [
+        "frontiers-v1-control",
+        "frontiers-v3-intervene"
+      ]
+    },
+    {
+      "id": "frontiers-v5-evolutionary",
+      "slot": "V.5",
+      "title": "Evolutionarily Stable Dependence: A Population Game of the Recovered Spectrum and the Selection Intervention",
+      "status": "delivered+gated",
+      "dir": "frontiers-v/EVOLUTIONARY-CID",
+      "key_results": {
+        "T1_ESS_potential_game": {
+          "ess_abar": "(b-kappa L0 H)/c",
+          "unregulated_b_over_c": 1.0134,
+          "global_stability": "strictly concave potential -c I; unique, globally attracting; centrality tax a_i*=(b-kappa L0 s_i)/c"
+        },
+        "T2_decentralisation": {
+          "kappa_bar": 0.7751,
+          "ess_at_kappa_bar": 0.9675,
+          "r_at_kappa_bar": 0.460255,
+          "over_connection_gap": 0.0459,
+          "turnpike_invariant_held": true
+        },
+        "T3_no_oscillation_theorem": {
+          "intensity_trace": -1.0,
+          "interior_re_max": -0.0721,
+          "no_hopf_no_chaos": true,
+          "regime_map_chaotic_cells": 0
+        },
+        "T3_transcritical_collapse": {
+          "kappa_crit": 0.0964,
+          "form": "(b-c eta_bar)/L0",
+          "H_star_eq_kappa_crit_over_kappa": true,
+          "single_hub_below": true,
+          "bistable": false
+        },
+        "T4_selection_wedge": {
+          "tau_star": 0.0482,
+          "form": "kappa_crit-kappa",
+          "obs_equiv_invariant": 3.3e-16,
+          "named_edge_refused": 0.0151
+        },
+        "scope_scan": {
+          "n_networks": 75,
+          "n_range": [
+            50,
+            500
+          ],
+          "rB_swept_to_barrier": 1.25,
+          "any_hopf": false,
+          "any_bistable": false,
+          "max_interior_re_at_barrier": -0.0544,
+          "kappa_crit_scales": "1/L0"
+        },
+        "commodity_robustness": {
+          "panel": "22 commodity futures",
+          "COVID": {
+            "eta": 0.9817,
+            "L0": 0.3409,
+            "interior_re": -0.0216,
+            "kappa_crit": 0.042
+          },
+          "calm": {
+            "eta": 1.0211,
+            "L0": 0.1649,
+            "interior_re": -0.0856,
+            "kappa_crit": 0.325
+          },
+          "both_over_connected": true,
+          "no_oscillation_holds": true
+        },
+        "TEST_C_selection_law": {
+          "slope": 1.96,
+          "surrogate_p": 0.94,
+          "verdict": "no power at n=26 (honest null)"
+        }
+      },
+      "formal": {
+        "lean_module": "Sochlean.EvolutionaryControl",
+        "status": "lake build exit 0; 12 theorems; 0 sorry; evo_no_oscillation = opposite-signed dual of V.2 turnpike_saddle_signature"
+      },
+      "honest_reframe": "the design's Hopf/multiplicity/chaos conjecture was REFUTED and replaced by the proved no-oscillation theorem + transcritical collapse",
+      "passivity_bridge": "no-oscillation theorem = the passivity register of the stable-games property: stable games are passive dynamical systems (Fox-Shamma 2013), and the standard evolutionary protocols on a passive game converge without a limit cycle (Park-Shamma-Martins 2018). Corroborates, does not carry, the directly-proven Jacobian result. Merged into the manuscript discussion 2026-06-18.",
+      "deferred_operators": [
+        "ess_restpoint",
+        "selection_wedge",
+        "regime_classify_evo"
+      ],
+      "refs": [
+        "Sandholm 2010",
+        "Hofbauer-Sandholm 2009 JET 144(4):1665-1693",
+        "Maynard Smith-Price 1973",
+        "Monderer-Shapley 1996",
+        "Kandori-Mailath-Rob 1993",
+        "Galeotti-Golub-Goyal 2020 (softened)",
+        "Acemoglu-Ozdaglar-Tahbaz-Salehi 2015",
+        "Price 1970",
+        "Sargent-Stachurski 2024",
+        "Fox-Shamma 2013 Games 4(4):561-583",
+        "Park-Shamma-Martins 2018 IEEE CDC (DOI 10.1109/CDC.2018.8619450)"
+      ],
+      "cross_links": [
+        "cid-dynamics-ii",
+        "frontiers-iv",
+        "frontiers-v2-recursive",
+        "frontiers-v3-intervene"
+      ]
+    },
+    {
+      "id": "namh",
+      "slot": "NAMH",
+      "title": "The Network Adaptive Market Hypothesis: Detection, Attribution, and Network-Mediated Efficiency",
+      "status": "submitted / gated (double-anonymised submission to Finance and Stochastics; blinded manuscript + separate title page)",
+      "dir": "namh/paper-v3/finance_stochastics_submission",
+      "key_results": {
+        "panel": "N=22 effective assets (24 assembled; 19 G20 equity indices + 5 commodity futures gold/silver/natural gas/crude oil/copper; MOEX-Russia and Tadawul-Saudi excluded from headline), T=5,085 trading days, 2001-01-02 to 2025-10-27, 20 annual rolling windows (w=252, step=252), 8 crisis anchors",
+        "eigenvector_hub_Japan": "Japan is the eigenvector-centrality top-1 hub in 13 of 20 windows; UK 3, Brazil 2, India 1, Turkey 1; the U.S. tops 0 windows",
+        "us_broadcaster": "U.S. is a broadcaster not an attractor: out-strength rank 1 in 9 of 20 windows; never rank 1 on eigenvector / PageRank / in-strength; best eigenvector rank 2 (W17, raw 0.953); GFC-peak (W7) eigenvector rank 9, value 0.150; weighted-directed-betweenness rank 1 in W8 and W13",
+        "spectral_radius_crisis": "spectral radius rho(A) elevated GFC-ESDC: W7=0.119, W8=0.118, W9=0.112, W10=0.126 (peak), 20-30% above panel mean 0.098; NOT re-elevated in COVID (W16-W17 ~0.101) nor Russia-Ukraine (W18=0.092)",
+        "neumann_convergence": "geometric: panel-median relative l-inf error 0.260 at k=0, 0.025 at k=1, 2.5e-3 at k=2, 2.7e-4 at k=3, 5.5e-11 at k=10; k=1 and k=2 paths account for 99.7% of the network-amplification term; four-digit accuracy by k=3 every window",
+        "phi_kernel_robustness": "panel-mean E* = 0.960 linear-absolute (headline), 0.965 Gaussian, 1.080 quadratic; qualitative crisis pattern preserved across all three"
+      },
+      "certification": {
+        "STRONG": [
+          "Existence/uniqueness/Neumann-representation theorem (Thm 1): for nonnegative HWTE A(t) with rho(A)<1, operator T is a strict contraction in an induce…",
+          "Geometric convergence of the Neumann series VERIFIED in genuine compute (output/diagnostics/neumann_partials.csv): panel-median relative l-inf error …",
+          "Japan eigenvector hub 13/20 windows -- manuscript number EXACTLY reproduced by cached results gate_hub_contrast.csv (magnitude-30 gate)",
+          "Per-asset leave-one-out rho-contribution crisis-vs-noncrisis split -- manuscript numbers EXACTLY match rho_contrib_by_regime.csv to 3 dp (5 developed…",
+          "Crisis spectral-radius elevation W7-W10 (0.119/0.118/0.112/0.126 vs panel mean 0.098) reproduced by gating_comparison.csv magnitude_30 rho_post column",
+          "lambda leave-one-window-out CV MAE (0.0421/0.0397/0.0370/0.0365) EXACTLY reproduced by lambda_cv.csv"
+        ],
+        "PROXY": [
+          "phi(H)=1-2|H-0.5| as a proxy for informational efficiency: manuscript's own Remark (rem:phi-caveat) states this is a reduced-form proxy, NOT a suffic…",
+          "HWTE positioned as a statistical companion to Kyle-type price discovery, explicitly 'consistent with, but does not derive from' a multi-asset structu…",
+          "Headline depends on the magnitude-top-30% edge-gating rule and the choice lambda=5 and exponential omega-kernel; spectral-radius rescaling safeguard …",
+          "E* level depends on the phi-kernel: panel-mean E* = 0.960 (linear-absolute) vs 0.965 (Gaussian) vs 1.080 (quadratic) -- a parameter-dependent magnitu…",
+          "Community modularity Q via Leiden depends on resolution gamma; Fortunato-Barthelemy resolution limit explicitly acknowledged for a 22-node sparse net…"
+        ],
+        "honest_caveat": [
+          "NULL / failed FDR: the strict Benjamini-Hochberg q<0.05 gate retains ZERO directed edges in 20 of 20 windows (04_fdr_retention.csv all rows n_edges=0…",
+          "Crisis amplification does NOT generalise: the Acemoglu-Ozdaglar-Tahbaz-Salehi dense-network phase-transition signature is detected only for GFC-ESDC …",
+          "Japan-as-hub finding is CONDITIONAL on the magnitude-30 gate: under the uncorrected p<0.05 gate Japan tops only 2 of 20 windows and hub identity disp…",
+          "'Universal anti-persistence in crises' is explicitly NOT supported by the panel: crisis Hurst deltas split into Anglo-Saxon anti-persistence vs Asian…",
+          "Hurst estimator disagreement: DFA-1 vs GPH/local-Whittle Spearman correlations are NEAR ZERO / NEGATIVE (rho_S(DFA,GPH)=-0.15, rho_S(DFA,LW)=-0.11); …",
+          "Eigenvector centrality is only well-defined on the dominant strongly-connected component (Tarjan SCC); outside it the Perron vector is non-unique (ma…"
+        ]
+      },
+      "provenance_note": "one internal omega-kernel prose-vs-data slip (W18 Copper vs Japan) is disclosed by the manuscript text; 3 secondary quantities were manuscript-only and are not promoted here.",
+      "refs": [
+        "Lo, A. W. (2004). The adaptive markets hypothesis. Journal of Portfolio Management, 30(5), 15-29.",
+        "Grossman, S. J., & Stiglitz, J. E. (1980). On the impossibility of informationally efficient markets. American Economic Review, 70(3), 393-…",
+        "Acemoglu, D., Ozdaglar, A., & Tahbaz-Salehi, A. (2015). Systemic risk and stability in financial networks. American Economic Review, 105(2)…",
+        "Kraskov, A., Stoegbauer, H., & Grassberger, P. (2004). Estimating mutual information. Physical Review E, 69(6), 066138.",
+        "Frenzel, S., & Pompe, B. (2007). Partial mutual information for coupling analysis of multivariate time series. Physical Review Letters, 99(…",
+        "Schreiber, T. (2000). Measuring information transfer. Physical Review Letters, 85(2), 461-464.",
+        "Marschinski, R., & Kantz, H. (2002). Analysing the information flow between financial time series. European Physical Journal B, 30(2), 275-…",
+        "Schreiber, T., & Schmitz, A. (2000). Surrogate time series. Physica D, 142(3-4), 346-382."
+      ],
+      "cross_links": [
+        "commodity-wqte",
+        "contagion-paper3",
+        "frontiers-iv",
+        "ksg-fc",
+        "mcpfm",
+        "mst-contagion",
+        "news-networks",
+        "soch",
+        "waveqte"
+      ],
+      "formal": "A Lean 4 layer exists at /home/ecolex/versiondevs/ivy-fineco/papers/namh/lean4/namhlean (Namhlean module + lake-manifest.json) but was NOT opened/verified this run and is NOT referenced by the blinde…",
+      "confidence": "high",
+      "provenance_gated": "key_results traced to a gated manuscript or a results file; see workflow wf_9f62c7a3-dff"
+    },
+    {
+      "id": "mst-contagion",
+      "slot": "MST",
+      "title": "Directed, Scale-Resolved Information-Flow Networks of Cross-Asset Contagion across Data-Identified Crisis Regimes: A Test of Robust-yet-Fragile Transmission",
+      "status": "submission-ready (elevated theory-forward rebuild; arXiv + Elsevier packages built; not yet stated as submitted)",
+      "dir": "contagion-channels/MST-contagion/rebuild/elevated",
+      "key_results": {
+        "n_assets": 26,
+        "sample": "2 Jan 2007 to 27 Nov 2025, T=5524 trading days",
+        "DY12_total_connectedness_index": "57.4%",
+        "crisis_FDR_node_cells_q<0.05": 9,
+        "calm_FDR_node_cells_q<0.05": 1,
+        "Nikkei_sink_z_crisis_D2": "-12.4321",
+        "spectral_radius_crisis_vs_calm_by_scale": "D1 0.31/0.22, D2 0.46/0.25, D3 0.49/0.24, D4 0.84/0.72 (1.4 to 2.1x amplification)",
+        "OOS_dAUC_incremental_1mo": "-0.036 [-0.079, 0.005]",
+        "n_propositions": 4
+      },
+      "certification": {
+        "STRONG": [
+          "Conservation of net directional flow: sum_i s_i = 0, proved in full (Prop, manuscript sec:props line 286-298) — pure finite-sum identity",
+          "Non-identification from symmetric inputs: net flow lives only in the antisymmetric part, undirected MST/abs-correlation provably cannot recover direc…",
+          "Gaussian reduction TE_{i->j} = 1/2 F_{i->j} (half Geweke directed feedback), proved in full (manuscript line 307-346) following Barnett-Barrett-Seth …",
+          "Central empirical finding: directional net-asymmetry is significant under BH-FDR q<0.05 in crisis (9 node-cells) but all but absent in calm (1 cell) …",
+          "Crisis raises total directed flow and significant-edge count at all four scales (regime_compare.csv) — descriptive but data-traced and monotone"
+        ],
+        "PROXY": [
+          "Spectral-radius amplification reading (Prop spectral): the recursion x_{t+1}=c W^T x_t + u_t is POSITED, not derived from TE; part (b) holds only und…",
+          "Spectral radius crisis>calm values (0.31/0.46/0.49/0.84 vs 0.22/0.25/0.24/0.72, 1.4-2.1x): a derived reading dependent on the posited multiplier mode…",
+          "Diebold-Yilmaz/Barunik-Krehlik agreement with the TE ranking is offered as mutual validation but is a ranking agreement, not an edge-for-edge identit…",
+          "Out-strength concentration (Gini) rise in crisis reported descriptively only, carries no surrogate test (line 609-610)"
+        ],
+        "honest_caveat": [
+          "OUT-OF-SAMPLE EARLY-WARNING IS A NULL: directed-network features add nothing beyond the volatility factor — incremental OOS AUC = -0.003 [-0.009,0.00…",
+          "Baseline strength is partly definitional/circular: the crisis label is itself the smoothed high state of the volatility factor, so beating it would m…",
+          "Crisis level-rise in flow is partly MECHANICAL: crisis days are selected on high realised volatility, so some rise in estimated flow is expected; loa…",
+          "Non-synchronous-trading confound: Tokyo closes before New York opens, so developed-to-Asia flow may partly reflect non-synchronous trading not inform…",
+          "D4 amplification is the weakest of four: coarse-scale coefficients are wider/more autocorrelated, and D4 crisis radius 0.84 sits in the cell most aff…",
+          "Crisis map weighted toward GFC: 535 of 799 pooled crisis days are the GFC, so it is a regime average not episode-invariant; episode heterogeneity lef…"
+        ]
+      },
+      "provenance_note": "the 8 regime-by-scale spectral radii (and a few flow totals) are manuscript-stated (robustness section), not all re-traced to an opened results file this run.",
+      "refs": [
+        "Acemoglu, Ozdaglar and Tahbaz-Salehi (2015) — robust-yet-fragile / phase transition",
+        "Allen and Gale (2000) — financial contagion, complete vs incomplete structures",
+        "Elliott, Golub and Jackson (2014) — integration and diversification, inverted-U",
+        "Gai and Kapadia (2010) — percolation, contagion cascades",
+        "Glasserman and Young (2015, 2016) — network amplification bounded by inside-system exposure",
+        "Schreiber (2000) — transfer entropy",
+        "Kraskov, Stoegbauer and Grassberger (2004) — nearest-neighbour MI estimator",
+        "Frenzel and Pompe (2007) — conditional MI / partial transfer entropy"
+      ],
+      "cross_links": [
+        "commodity-wqte",
+        "contagion-paper3",
+        "frontiers-iv",
+        "frontiers-v1-control",
+        "ksg-fc",
+        "mcpfm",
+        "namh",
+        "news-networks",
+        "soch",
+        "waveqte"
+      ],
+      "formal": "Lean4 layer present at rebuild/elevated/lean4 (per memory: lake build exit 0, 9-proved/3-sorry, #print axioms clean) — NOT opened/verified this run; per project policy Lean stays internal and is not …",
+      "confidence": "high",
+      "provenance_gated": "key_results traced to a gated manuscript or a results file; see workflow wf_9f62c7a3-dff"
+    },
+    {
+      "id": "mcpfm",
+      "slot": "MCPFM",
+      "title": "Multi-Scale Transfer Entropy Networks as a Diagnostic Framework for Systemic Risk: Theory and Pre-Registered Empirical Evidence",
+      "status": "submission-ready manuscript (gated); pre-registered v2, supersedes arXiv:2507.08065 (PI's own v1)",
+      "dir": "mcpfm/v2_empirical/paper_v2_new",
+      "key_results": {
+        "primary_oos_auc_mcpfm_v2": "0.470 (95% DeLong CI [0.358, 0.591]) on 25-asset 2012-05-21 to 2024-12-30 panel, 56 rolling windows — BELOW the 0.5 random baseline",
+        "hansen_spa_p_primary": "0.031 (rejects null that MCPFM v2 is NOT inferior to the best benchmark; i.e. MCPFM v2 is significantly worse)",
+        "benchmark_aucs_beating_mcpfm": "BGLP_PCAS 0.680 [0.551,0.797]; DeltaCoVaR 1% 0.660 [0.543,0.763]; DeltaCoVaR 5% 0.652 [0.527,0.760]; VIX 0.563 [0.446,0.678] — all beat MCPFM v2 at BH-FDR significance",
+        "kyle_te_equivalence": "TE_{s->p} = (1/2) log(1 + lambda^2) at the unique linear Kyle equilibrium (lambda = Kyle price impact)",
+        "welfare_bound": "uniform per-link Pigouvian tax tau* (from aggregate in-degree moments only) recovers first-best welfare up to W_FB - W(tau*) = O(1/N)",
+        "flow_decay_function_corrected": "phi(n) = n/(n+1)^2 ; strictly concave on (0,1), strictly decreasing on (1,infty), global max phi(1)=1/4 (hump-shaped; corrects v1's monotone-decreasing claim)"
+      },
+      "certification": {
+        "STRONG": [
+          "Benchmark AUCs that beat MCPFM v2 at BH-FDR significance on the primary 25-asset panel: BGLP_PCAS 0.680, DeltaCoVaR 1% 0.660, DeltaCoVaR 5% 0.652, VI…",
+          "Theory: corrected flow-decay function phi(n)=n/(n+1)^2 with global max phi(1)=1/4 (Proposition, proven; corrects v1's monotone claim)",
+          "Theory: Kyle-TE equivalence TE_{s->p}=(1/2)log(1+lambda^2) at the unique linear Kyle equilibrium (Proposition prop:kyle-te)",
+          "Theory: exact-potential Nash existence (Monderer-Shapley) + directed-Nash stability (Bala-Goyal) for the network-formation game (Theorems thm:potenti…",
+          "Pre-registration with a complete deviation log (J=6->J=4 logged; sample truncation logged) — methodological rigor explicitly committed"
+        ],
+        "PROXY": [
+          "Implementable welfare bound W_FB - W(tau*) = O(1/N) — depends on aggregate in-degree-moment auxiliary structure and an asymptotic-in-N argument (Prop…",
+          "Supplementary 15-asset 2007-2024 AUC=0.682 with SPA p=0.048 — favourable but DEVIATES from pre-registration on 3 margins (reduced N, reduced B, longe…",
+          "Tail asymmetry R_s>>1 (upper-tail tau=0.95 TE intensity exceeds lower-tail tau=0.05 at every scale) — directionally claimed and microfounded, but exa…"
+        ],
+        "honest_caveat": [
+          "PRIMARY AGGREGATE PREDICTOR IS BELOW RANDOM: MCPFM v2 SRI AUC=0.470 (95% CI [0.358,0.591]) on the pre-registered 25-asset run — below the 0.5 baselin…",
+          "Hansen SPA p=0.031 REJECTS MCPFM v2 superiority — it is significantly WORSE than the best benchmark in the family; the v1 arXiv:2507.08065 'superior …",
+          "Wavelet-correlation baseline AUC=0.516 = essentially no skill (SPA p=0.084) on the same panel",
+          "Flow-decay nls fit returns a DEGENERATE solution: surviving TE at scales 1-2 are ~numerical zero (scale1=0, scale2=0), insufficient dispersion to ide…",
+          "DY NET (0.500) and BGLP DCI/indeg/outdeg (0.460) are NOT BH-FDR-significant vs MCPFM (BH-FDR=FALSE) — MCPFM is not distinguishable from these two wea…",
+          "Sample truncation: META IPO (2012-05-18) forces the 2012-2024 window, EXCLUDING the 2008-09 GFC and most of the Euro-debt crisis from the primary test"
+        ]
+      },
+      "provenance_note": "AUC 0.470 / Hansen-SPA p 0.031 are manuscript-stated (gated text), not in a separate results CSV; the tail-asymmetry R1..R4 were unfilled [TBF] placeholders and are excluded; an internal manuscript-vs-CSV flow-decay scale slip is disclosed.",
+      "refs": [
+        "Adrian & Brunnermeier (2016) CoVaR, American Economic Review 106(7):1705-1741",
+        "Brownlees & Engle (2017) SRISK, Review of Financial Studies 30(1):48-79",
+        "Billio, Getmansky, Lo & Pelizzon (2012) JFE 104(3):535-559",
+        "Diebold & Yilmaz (2014) J. Econometrics 182(1):119-134",
+        "Acemoglu, Ozdaglar & Tahbaz-Salehi (2015) Systemic Risk and Stability in Financial Networks, AER 105(2):564-608",
+        "Elliott, Golub & Jackson (2014) Financial Networks and Contagion, AER 104(10):3115-3153",
+        "Schreiber (2000) Measuring Information Transfer, PRL 85(2):461-464",
+        "Barnett, Barrett & Seth (2009) Granger Causality and Transfer Entropy Are Equivalent for Gaussian Variables, PRL 103(23):238701"
+      ],
+      "cross_links": [
+        "commodity-wqte",
+        "contagion-paper3",
+        "frontiers-iv",
+        "ksg-fc",
+        "mst-contagion",
+        "namh",
+        "news-networks",
+        "soch",
+        "waveqte"
+      ],
+      "confidence": "high",
+      "provenance_gated": "key_results traced to a gated manuscript or a results file; see workflow wf_9f62c7a3-dff"
+    },
+    {
+      "id": "soch",
+      "slot": "SOCH",
+      "title": "Scale-Ordered Contagion: A Spectral Theory of Heterogeneous Information Adaptation in Financial Networks",
+      "status": "gated (submission-ready manuscript on disk; companion sochcontagion R package, Data-in-Brief, MethodsX, and Lean4 layer…",
+      "dir": "SOCH",
+      "key_results": {
+        "SOCH_A_scale_ordering": "SUPPORTED. peak-scale regression k_hat = 2.97 + 0.58 x (#emerging), t=2.08, p=0.042 (significant)",
+        "SOCH_B_shape_symmetry": "SUPPORTED (the sharp test). All 28 of 28 unordered market pairs statistically indistinguishable across direction (p>0.05); every soch_b_holds row = TRUE",
+        "SOCH_C_magnitude_asymmetry": "DIRECTIONALLY SUPPORTED but NOT SIGNIFICANT. directional level ratio median 1.18 (CSV 1.176428), advanced-to-emerging dominates in 69% of pairs (frac_gt1=0.6875), one-sided sign test p=0.105 (CSV 0.105057) -- short of significance",
+        "Test4_endogenous_classification": "PARTIAL (extremes recovered). India alpha_hat=0.29 and China alpha_hat=0.076 are decisively the slowest adapters (order of magnitude below rest); remaining six markets cluster alpha_hat approx 1.8-3.2 in weakly-identified Nyquist region; median split cannot resolve the fast cluster",
+        "core_theory": "receiver-filtering extension: observed transmission = convolution of source generation kernel and receiver absorption kernel -> bi-exponential response -> power spectrum = product of two Lorentzians; slower market sets binding spectral corner alpha_min; Prop: baseline HACI half-life = ln2/alpha_source, independent of receiver rate (the limitation resolved)",
+        "sample": "G20 equity daily log-returns 2006-2026; working sample of 8 markets (4 advanced USA/UK/Germany/Japan, 4 emerging China/India/Brazil/SouthAfrica) = 56 ordered pairs / 28 unordered"
+      },
+      "certification": {
+        "STRONG": [
+          "SOCH-A scale ordering SUPPORTED: peak scale increases with #emerging markets, slope 0.58, t=2.08, p=0.042 (significant) -- rests on the well-identifi…",
+          "SOCH-B shape symmetry SUPPORTED across ALL 28/28 unordered pairs (p>0.05 every pair); the theory's sharpest and most novel restriction; direction-inv…",
+          "Endogenous classifier identifies the two slowest adapters cleanly and decisively: India alpha=0.29, China alpha=0.076, an order of magnitude below th…",
+          "Closed-form theory results are exact/proved: baseline half-life = ln2/alpha_source (receiver-independent), bi-exponential transmission response, powe…"
+        ],
+        "PROXY": [
+          "SOCH-A regressor (#emerging markets) is a PROXY for a small binding spectral corner alpha_min, not alpha_min itself",
+          "Directional WQTE measure is the loadable Koenker-Machado quantile-on-wavelet directional gain (a pseudo-R1), validated against the framework's KSG si…",
+          "alpha-to-TE proportionality constant c>0 in the profile-matching estimator is an auxiliary parameter; market-level alpha_i estimates depend on the po…"
+        ],
+        "honest_caveat": [
+          "SOCH-C magnitude asymmetry is DIRECTIONALLY supported (advanced->emerging dominates 69%, median ratio 1.18) but NOT statistically significant: one-si…",
+          "Test 4 identification is only PARTIAL: the six non-extreme markets cluster at alpha approx 1.8-3.2 in a weakly-identified region near the sampling Ny…",
+          "SOCH-B test has LIMITED POWER: the same-shape bootstrap null is wide because each profile carries estimation noise, so the test is weak against small…",
+          "Monte Carlo (soch_mc_R.csv) confirms identification degrades toward Nyquist: relative RMSE of alpha_min rises with the true rate (e.g. rel_rmse appro…",
+          "Working sample is only 8 of ~18-20 G20 markets (28 unordered pairs); full panel, further quantiles, and alternative wavelet filters are an outstandin…",
+          "Potential timezone / non-overlapping-trading-hours confound for directed equity-market information flow is inherent to daily cross-border returns (st…"
+        ]
+      },
+      "refs": [
+        "Forbes and Rigobon (2002). No contagion, only interdependence. Journal of Finance, 57(5), 2223-2261.",
+        "Mankiw and Reis (2002). Sticky information versus sticky prices. Quarterly Journal of Economics, 117(4), 1295-1328.",
+        "Coibion and Gorodnichenko (2015). Information rigidity and the expectations formation process. American Economic Review, 105(8), 2644-2678.",
+        "Schreiber (2000). Measuring information transfer. Physical Review Letters, 85(2), 461-464.",
+        "Kraskov, Stoegbauer, and Grassberger (2004). Estimating mutual information. Physical Review E, 69(6), 066138.",
+        "Gencay, Selcuk, and Whitcher (2002). An Introduction to Wavelets and Other Filtering Methods in Finance and Economics. Academic Press.",
+        "Percival and Walden (2000). Wavelet Methods for Time Series Analysis. Cambridge University Press.",
+        "Koenker and Bassett (1978). Regression quantiles. Econometrica, 46(1), 33-50."
+      ],
+      "cross_links": [
+        "commodity-wqte",
+        "contagion-paper3",
+        "frontiers-iv",
+        "ksg-fc",
+        "mcpfm",
+        "mst-contagion",
+        "namh",
+        "news-networks",
+        "waveqte"
+      ],
+      "formal": "Lean4 layer present at lean4/sochlean/ (lake-manifest + Sochlean/ modules incl. Spectrum.lean, RecursiveControl.lean, EvolutionaryControl.lean) but NOT opened/built this run; status unverified from t…",
+      "confidence": "high",
+      "provenance_gated": "key_results traced to a gated manuscript or a results file; see workflow wf_9f62c7a3-dff"
+    },
+    {
+      "id": "commodity-wqte",
+      "slot": "WQTE",
+      "title": "Community Networks of Commodity Markets: Long Memory Models and the Impact of Different Crises",
+      "status": "submission-ready (re-estimated/corrected re-draft; manuscript compiles to 64pp PDF, every reported number traced to liv…",
+      "dir": "commodity/commodity_paper_new",
+      "key_results": {
+        "method": "Wavelet Quantile Transfer Entropy (WQTE): MODWT (LA8 filter, J=4 levels; 2-4d/4-8d/8-16d/16-32d horizons) combined with quantile-regression transfer entropy at tau in {0.05,0.50,0.95}; complements symmetric Achard-Gannaz wavelet fractal connectivity (FC)",
+        "panel": "23 major commodity futures, 1991-2025, eight crisis windows",
+        "scale_amplification_16to32d_vs_2to4d": "16-32 day mean |QTE| typically four to seven times larger than 2-4 day (never below three-and-a-half) across crisis periods",
+        "FC_QTE_decoupling": "correlation turns NEGATIVE only in the two recent supply-shock crises: COVID-19 (-0.111) and Russia-Ukraine war (-0.041), indicating symmetric co-movement and directional transfer decouple",
+        "top_net_sender_by_regime": "Crude Oil (Pre-Crisis), Lean Hogs (Subprime & Sovereign Debt), Oats (Stock Crash 2015-16), Coffee (Pre-COVID), Palladium (COVID-19 & Russia-Ukraine war), Sugar (Post-Crisis Recovery)",
+        "pct_positive_QTE": "100% positive in every period and at every scale (mechanical: QTE non-negative by construction)",
+        "hurst_finding": "time-varying Hurst exponents lie close to 0.5 (weak long-range dependence), shifting around turbulence; persistence reduction most pronounced during Russia-Ukraine war when energy complex falls below no-memory threshold"
+      },
+      "certification": {
+        "STRONG": [
+          "Scale-dependent amplification: 16-32 day mean |QTE| typically 4-7x (never below 3.5x) the 2-4 day value across all crisis periods — directly tabulate…",
+          "16-32d |QTE| ordering: highest Post-Crisis Recovery 0.0147 and Stock Crash 2015-16 0.0131, lowest Pre-COVID 0.0056 — full table, verbatim + CSV-traced",
+          "FC vs symmetrised-QTE correlation positive in 6 of 8 windows, range -0.111 to 0.318 — exact values match output/table8_fc_vs_wqte.csv",
+          "Decoupling: FC-QTE correlation turns negative ONLY in COVID-19 (-0.111) and Russia-Ukraine (-0.041), the two supply-shock crises — datum-level traced",
+          "Companion FC result: long-run connectivity strongest at subprime |FC|=0.290 (5 communities) and sovereign-debt 0.273, weakest Pre-COVID 0.114, positi…"
+        ],
+        "PROXY": [
+          "Top net information sender by regime (Crude Oil / Palladium / Lean Hogs / Oats / Coffee / Sugar) is computed from the directed QTE flow matrices unde…",
+          "Palladium-leader-during-Russia-Ukraine interpretation is an economic narrative attached to the top-sender statistic (Russia's ~40% palladium-supply s…",
+          "QTE asymmetry magnitudes (0.0040-0.0094) are summary mean|Q-Q^T| over the retained directed network and inherit the same thresholding dependence",
+          "Directional 'sender/receiver' and community-fragmentation claims rest on greedy-modularity community detection on the undirected collapse — algorithm…"
+        ],
+        "honest_caveat": [
+          "100% positive QTE rate in every period/scale is MECHANICAL (QTE is non-negative by construction as a quantile-prediction improvement) — the manuscrip…",
+          "Time-varying Hurst exponents lie close to 0.5 (weak long-range dependence); long memory is episodic/state-dependent, not a uniform signal — manuscrip…",
+          "QTE values are tiny in absolute terms (order 1e-3 to 1.5e-2); no inferential significance test / surrogate-based p-values reported for individual QTE…",
+          "The WQTE-contagion method anchor (Parida et al. 2025) is an SSRN working paper, not a peer-reviewed publication",
+          "This corrected re-draft exists because the ORIGINAL commodity.csv had six defective/truncated series (Silver/Platinum/Palladium/Lean Hogs/Feeder Catt…",
+          "No results.json exists; provenance is the output/*.csv re-computation set plus REPORT.md's reproducibility claim — not an independent gated results b…"
+        ]
+      },
+      "refs": [
+        "Jizba, P., Kleinert, H., and Shefaat, M. (2012). Renyi's information transfer between financial time series. Physica A 391(10), 2971-2989.",
+        "Dimpfl, T. and Peter, F.J. (2013). Using transfer entropy to measure information flows between financial markets. Studies in Nonlinear Dyna…",
+        "Schreiber, T. (2000). Measuring information transfer.",
+        "Achard, S. and Gannaz, I. (2016). Multivariate wavelet Whittle estimation in long-range dependence. Journal of Time Series Analysis 37(4), …",
+        "Parida, Y., Bhandari, A.K., Dubey, A.D., and Sahu, S. (2025). Wavelet quantile transfer entropy contagion analysis of global stock markets.…",
+        "Percival, D.B. and Walden, A.T. (2000). Wavelet Methods for Time Series Analysis.",
+        "Qu, Z. (2011). A test against spurious long memory.",
+        "Sibbertsen, P., Leschinski, C.H., and Holzhausen, M. (2018). A multivariate test against spurious long memory. Journal of Econometrics 203(…"
+      ],
+      "cross_links": [
+        "contagion-paper3",
+        "ksg-fc",
+        "mcpfm",
+        "mst-contagion",
+        "namh",
+        "news-networks",
+        "soch",
+        "waveqte"
+      ],
+      "confidence": "high",
+      "provenance_gated": "key_results traced to a gated manuscript or a results file; see workflow wf_9f62c7a3-dff"
+    },
+    {
+      "id": "ksg-fc",
+      "slot": "KSG-FC",
+      "title": "Fractal Communities and Transfer-Entropy Networks in Commodity Markets: Directional Information Flow and Systemic Risk across Crises",
+      "status": "gated working paper (sole-author, Avishek Bhandari; svjour-style article class; dated June 2026; not yet labelled submi…",
+      "dir": "commodity/KSG-FC-Commodity",
+      "key_results": {
+        "panel": "23 commodity futures, 2 Jan 1991 to 21 July 2025, daily log returns, partitioned into 8 crisis/calm windows (4 energy, 4 precious metals, copper, 11 agricultural, 3 livestock)",
+        "csri_definition": "Commodity systemic-risk index (C-SRI) = average directed (effective) transfer entropy over all ordered pairs; ordinal surveillance indicator, NOT a cardinal contagion severity; bias-corrected via effective TE (Marschinski-Kantz 2002, TE minus IAAFT-surrogate-mean)",
+        "effective_csri_positive_windows": "Effective (bias-corrected) C-SRI is positive ONLY in 2015-16 Stock Crash, COVID-19, and post-2024 recovery; negative in the two financial crises (subprime, sovereign-debt) and the calm pre-pandemic window",
+        "decoupling_main_finding": "Symmetric (fractal connectivity) and directional (KSG-TE) views DECOUPLE: FC hub, KSG leading sender, and WQTE leading sender are three DIFFERENT commodities in every one of the 8 windows; symmetric connectivity peaks in the financial crises, directional flow in 2015-16 and COVID",
+        "node_level_decoupling_rho": "Within-window Spearman rank correlation between FC eigenvector centrality and KSG out-strength ranges from -0.34 to +0.46 across windows, no consistent sign, near-zero average",
+        "leading_transmitter": "Cotton is the most persistent net transmitter of information, carrying positive net effective flow in 6 of 8 windows; strongest directed links concentrate in the agricultural complex and the grain-energy interface (leading edge inside agriculture in 6 of 8 windows, e.g. wheat->soybean oil, soybeans->oats)",
+        "gpu_cpu_equivalence": "GPU CUDA KSG kernel is bit-identical to the CPU reference: maximum absolute discrepancy across windows = 4.4 x 10^-16 (double-precision rounding level); 8 windows complete in approximately 20 minutes on a single NVIDIA RTX 3000 Ada GPU",
+        "robustness_ell2_collapse": "Lengthening history to ell=2 collapses agreement (mean Spearman 0.07) due to curse of dimensionality in samples of a few hundred observations; ell=1 is therefore fixed"
+      },
+      "certification": {
+        "STRONG": [
+          "Symmetric/directional decoupling: FC hub, KSG sender, WQTE sender are three different commodities in all 8 windows (Table 2; cmp_fc_ksg.csv KSG_eq_WQ…",
+          "GPU CUDA KSG kernel bit-identical to CPU reference, max abs discrepancy 4.4e-16 (double-precision rounding)",
+          "Panel stationarity: ADF rejects unit root and KPSS fails to reject stationarity for every one of 23 series (adf_p=0.01, kpss_p>=0.10)",
+          "Effective C-SRI positive ONLY in 2015-16, COVID-19, post-2024 recovery; negative in the two financial crises and the calm window (sign deterministic …",
+          "Robustness at ell=1: directed-TE rankings stable to neighbour count, mean Spearman 0.77 vs k=4 baseline",
+          "Fractal-connectivity |FC| strongest in subprime (0.29, 5 communities) and sovereign-debt (0.27) crises; weakest in calm pre-pandemic (0.11)"
+        ],
+        "PROXY": [
+          "C-SRI is an ORDINAL surveillance proxy (mean directed effective TE), explicitly NOT a cardinal contagion-severity measure; the manuscript states its …",
+          "Effective TE bias correction depends on the IAAFT-surrogate-mean null (auxiliary B=99 surrogate procedure); residual finite-sample dependence remains…",
+          "Cotton 'most persistent net transmitter' rests on net effective flow signs; the manuscript itself cautions the single strongest link/transmitter is n…",
+          "C-SRI identified as the commodity-market analogue of the Econstellar engine's experimental connectivity-based G20-equity contagion proxy (an experime…"
+        ],
+        "honest_caveat": [
+          "NO directed link survives Benjamini-Hochberg FDR correction in ANY window — structural, since the permutation p-value is bounded below by 1/(B+1); fo…",
+          "Directional signal is 'real but faint and estimator-sensitive'; the leading transmitter differs across TE methods",
+          "ell=2 history collapses ranking agreement (mean Spearman 0.07) — curse of dimensionality in samples of a few hundred",
+          "KSG leading transmitter coincides with the companion WQTE leader in NONE of the 8 windows (estimator disagreement)",
+          "At common sample N*=337 only the post-2024 window is individually distinguishable from zero; all others straddle zero (COVID positive in only 74% of …",
+          "Cross-window |FC| vs C-SRI Spearman 0.10 with 95% CI [-0.65, 0.75] spanning zero -> ABSENCE OF EVIDENCE for coupling, not proof of absence (only 8 wi…"
+        ]
+      },
+      "refs": [
+        "Achard, S., Bassett, D.S., Meyer-Lindenberg, A., Bullmore, E. (2008). Fractal connectivity of long-memory networks. Physical Review E, 77(3…",
+        "Achard, S. and Gannaz, I. (2016). [multivariate wavelet-Whittle / multiwave]. Journal of Time Series Analysis, 37(4):476-512.",
+        "Schreiber, T. (2000). Measuring information transfer. [Transfer entropy]",
+        "Kraskov, A., Stoegbauer, H., Grassberger, P. (2004). Estimating mutual information.",
+        "Frenzel, S. and Pompe, B. (2007). Partial mutual information for coupling analysis of multivariate time series. The European Physical Journ…",
+        "Marschinski, R. and Kantz, H. (2002). [Effective transfer entropy]. The European Physical Journal B, 30(2):275-281.",
+        "Schreiber, T. and Schmitz, A. (1996). [IAAFT surrogates]",
+        "Clauset, A., Newman, M.E.J., Moore, C. (2004). [fast-greedy modularity]"
+      ],
+      "cross_links": [
+        "commodity-wqte",
+        "contagion-paper3",
+        "mcpfm",
+        "mst-contagion",
+        "namh",
+        "news-networks",
+        "soch",
+        "waveqte"
+      ],
+      "confidence": "high",
+      "provenance_gated": "key_results traced to a gated manuscript or a results file; see workflow wf_9f62c7a3-dff"
+    },
+    {
+      "id": "news-networks",
+      "slot": "FRO-III",
+      "title": "Frontiers in Adaptive Markets Dynamics III: The Directed Network of News Attention and the Estimable Market for News",
+      "status": "submission-ready (gated, self-contained NBER-working-paper-style article; sole-venue not stamped in tex)",
+      "dir": "/home/ecolex/versiondevs/net-papers/news-networks-program",
+      "key_results": {
+        "sample_span": "2018-01-01 to 2026-06-01, daily; 3054 daily log-changes full sample",
+        "election_dominant_sink": "election in-strength 0.2339 (dominant attention sink by wide margin); next export controls 0.0936, tariff 0.0922",
+        "connectedness_attention_strength": "Spearman total-strength vs mean attention rho=+0.668, p=0.0065 (n=15)",
+        "bh_fdr_q05_edges": "0 edges survive Benjamini-Hochberg q=0.05 (honest null, power-limited: smallest attainable per-pair p = 1/200 = 0.005 > BH threshold 0.05/210 approx 0.0002)",
+        "density_across_eras": "monotone densification: pre-2020 0.0429 (9 edges); COVID 0.0524 (11 edges); post-2022 0.0857 (18 edges)",
+        "estimator_validation": "Gaussian closed-form TE: estimate 0.1434 vs analytic 0.1438; coupled-AR recovers direction TE_{x->y}=0.1791 vs TE_{y->x}=0.0083; independent series 0.0071",
+        "theory_anchor": "Kranton & McAdams (2020) equilibrium market for news; density-veracity sign not fixed (negative at high density on views margin, positive on actions margin) -> left to forward longitudinal NEURICX instrument"
+      },
+      "certification": {
+        "STRONG": [
+          "Election is the dominant attention sink (in-strength 0.2339), >2x the next topic; full-sample density 0.0857 with mean edge asymmetry 1.0 (purely one…",
+          "Monotone densification across eras 0.0429 -> 0.0524 -> 0.0857 (9 -> 11 -> 18 edges) is a direct count from the per-era significant-edge networks",
+          "Connectedness<->attention: total-strength Spearman rho=+0.668, p=0.0065 (n=15) and out-strength rho=+0.638, p=0.0105 are significant at 5%, the broad…",
+          "Estimator validated against three known-answer cases (Gaussian 0.1434 vs analytic 0.1438; AR direction recovered 0.1791>>0.0083; independent 0.0071) …",
+          "Per-pair edges survive IAAFT-surrogate test at p<0.05 (B=199), a real significance screen against linear-autocorrelation nulls (not merely positive T…"
+        ],
+        "PROXY": [
+          "TE edge significance and all centralities depend on the k=4 max-norm Kraskov/Frenzel-Pompe estimator under a fixed raw-units choice (manuscript state…",
+          "Mapping the 15 topics into 5 transmission channels (Trade/Financial/Geopolitical/Behavioural/Monetary Policy) is an a-priori taxonomy, not estimated;…",
+          "The structural density-veracity sign of Kranton-McAdams (2020) is NOT identified by this cross-section; it is deferred to a forward longitudinal inst…"
+        ],
+        "honest_caveat": [
+          "BH-FDR HONEST NULL: 0 of 18 per-pair edges survive Benjamini-Hochberg at q=0.05 in every window — disclosed as in part a power limitation (smallest a…",
+          "Receiving-side connectedness measures NOT significant: in-strength and Katz both rho=+0.258, p=0.353; PageRank weak/marginal rho=+0.495, p=0.061",
+          "Community structure does NOT reproduce the channel taxonomy: full-sample ARI 0.007 (essentially chance), post-2022 ARI -0.044 (negative/near-chance);…",
+          "Connectedness<->attention is explicitly cross-sectional and correlational, NOT a causal test; manuscript discloses a mechanical confound (heavier-cov…",
+          "3 of 18 planned topics (bond yields, banking crisis, interest rate) could not be retrieved within the collection window (series length 0) — reported …",
+          "Sample is 15 topics (n=15 for all Spearman tests), a small cross-section that limits attainable significance"
+        ]
+      },
+      "refs": [
+        "Kranton, R., & McAdams, D. (2020). Social networks and the market for news. Working paper.",
+        "Schreiber, T. (2000). Measuring information transfer. Physical Review Letters, 85(2), 461-464.",
+        "Kraskov, A., Stogbauer, H., & Grassberger, P. (2004). Estimating mutual information. Physical Review E, 69(6), 066138.",
+        "Frenzel, S., & Pompe, B. (2007). Partial mutual information for coupling analysis of multivariate time series. Physical Review Letters, 99(…",
+        "Schreiber, T., & Schmitz, A. (1996). Improved surrogate data for nonlinearity tests. Physical Review Letters, 77(4), 635-638.",
+        "Benjamini, Y., & Hochberg, Y. (1995). Controlling the false discovery rate. Journal of the Royal Statistical Society B, 57(1), 289-300.",
+        "Traag, V. A., Waltman, L., & van Eck, N. J. (2019). From Louvain to Leiden: guaranteeing well-connected communities. Scientific Reports, 9,…",
+        "Leicht, E. A., & Newman, M. E. J. (2008). Community structure in directed networks. Physical Review Letters, 100(11), 118703."
+      ],
+      "cross_links": [
+        "commodity-wqte",
+        "contagion-paper3",
+        "frontiers-iv",
+        "ksg-fc",
+        "mcpfm",
+        "mst-contagion",
+        "namh",
+        "soch",
+        "waveqte"
+      ],
+      "confidence": "high",
+      "provenance_gated": "key_results traced to a gated manuscript or a results file; see workflow wf_9f62c7a3-dff"
+    },
+    {
+      "id": "waveqte",
+      "slot": "WaveQTE",
+      "title": "Contagion Channel Identification in Global Stock Markets: A Wavelet Quantile Transfer Entropy Approach",
+      "status": "working paper (gated PDF only; title block dated February 19, 2026; no arXiv id present in file)",
+      "dir": "waveqte",
+      "key_results": {
+        "markets": "18 global stock market indices (8 developed, 10 emerging), Jan 5 2004 to Jun 28 2024, 5,275 trading days",
+        "mean_QTE_intensification": "mean QTE rises from 0.039 (Pre-Crisis) to 0.066 during GFC (+69%) and 0.114 during Chinese Stock Crash (+192%)",
+        "channel_share_GFC": "Financial 50.0% (dominant), Behavioral 28.0, Mon.Policy 16.3, Trade 3.9, Geopolitical 1.8",
+        "GFC_SP500_centrality": "S&P 500 highest eigenvector centrality 1.000 and out-degree 70.6% during GFC",
+        "top_link": "strongest contagion link SHCOMP->DAX QTE 0.231 (Monetary Policy, Pre-Crisis); SHCOMP is source in 4 of top-10 links",
+        "wavelet_scales": "MODWT LA8 filter, 6 detail scales D1(2-4d) to D6(64-128d); target scale D5 (32-64 days), quantiles tau in {0.05,0.50,0.95}"
+      },
+      "provenance_note": "PDF-only source on disk (no results/CSV file); the orientation's arXiv:2604.26546 could NOT be corroborated (PDF title block = 'Working Paper') and is therefore NOT asserted; values traced to the rendered manuscript tables.",
+      "refs": [
+        "Parida, I., Bhandari, A., Dubey, R.K., and Sahu, H.K. (2025). Financial contagion networks: A wavelet-based quantile transfer entropy appro…",
+        "Schreiber, T. (2000). Measuring information transfer. Physical Review Letters, 85(2):461-464. doi:10.1103/PhysRevLett.85.461",
+        "Jizba, P., Kleinert, H., and Shefaat, M. (2012). Renyi's information transfer between financial time series. Physica A, 391(10):2971-2989. …",
+        "Dimpfl, T. and Peter, F.J. (2013). Using transfer entropy to measure information flows between financial markets. Studies in Nonlinear Dyna…",
+        "Koenker, R. (2005). Quantile Regression. Cambridge University Press. doi:10.1017/CBO9780511754098",
+        "Percival, D.B. and Walden, A.T. (2000). Wavelet Methods for Time Series Analysis. Cambridge University Press. doi:10.1017/CBO9780511841040",
+        "Forbes, K.J. and Rigobon, R. (2002). No contagion, only interdependence. Journal of Finance, 57(5):2223-2261. doi:10.1111/0022-1082.00494",
+        "Caldara, D. and Iacoviello, M. (2022). Measuring geopolitical risk. American Economic Review, 112(4):1194-1225. doi:10.1257/aer.20191823"
+      ],
+      "cross_links": [
+        "commodity-wqte",
+        "contagion-paper3",
+        "ksg-fc",
+        "mcpfm",
+        "mst-contagion",
+        "namh",
+        "news-networks",
+        "soch"
+      ],
+      "confidence": "high",
+      "provenance_gated": "key_results traced to a gated manuscript or a results file; see workflow wf_9f62c7a3-dff"
+    },
+    {
+      "id": "contagion-paper3",
+      "slot": "paper3",
+      "title": "What Drives Contagion? Identifying and Attributing Cross-Border Transmission Mechanisms",
+      "status": "arxiv (arxiv_submission package present; main_final.tex + main_final.pdf compiled; authors Bhandari, Parida, Sahu, IIT …",
+      "dir": "contagion-channels/manuscripts/paper3_v2",
+      "key_results": {
+        "gfc_trade_share_dominant_pct": 27.9,
+        "trade_share_range_post2007": "9% (Pre-Crisis) to 28% (GFC) under primary IV/2SLS",
+        "trade_F_range": "0.6 to 3.7, all below Stock-Yogo F=10 (weak instruments)",
+        "identification_robust_count": "2 of 8 (Pre-Crisis Financial, ESDC Financial)",
+        "identification_fragile_count": "6 of 8",
+        "rigobon_gfc_dominant": "Behavioural 33.1%",
+        "sample_window": "12 Jan 2006 - 18 Mar 2026",
+        "n_markets": 18
+      },
+      "certification": {
+        "STRONG": [
+          "Stage-1 WQTE detection numbers are directly computed and identified: max bilateral WQTE 0.3305 (Japan->France, CSC), absolute threshold 0.0331, GFC d…",
+          "Identification-ROBUST subset = Pre-Crisis and ESDC, both Financial-dominant, agreeing across IV/2SLS + LP(h=5) + Rigobon (method_comparison.csv Ident…",
+          "Financial-channel first-stage F-statistics 29.9-764.9, all above Stock-Yogo F=10 -> financial channel is strongly identified by its instruments (diag…",
+          "GFC headline trade share 27.9% is the dominant channel under the PRIMARY IV/2SLS specification with tight bootstrap CI [26.1,29.8] (Table tab:channel…"
+        ],
+        "PROXY": [
+          "The GFC 'trade dominant 27.9%' headline is method-conditional: it holds ONLY under the primary IV/2SLS, and rests on a time-varying trade-weighted-do…",
+          "All channel-attribution shares depend on the orthogonality of the five engineered channel composites (Trade=dollar index, Financial=VIX+HY-OAS+FSI, B…",
+          "Dominant-channel rankings for the 6 fragile sub-periods (GFC, CSC, Pre-COVID, COVID-19, Russia-Ukraine, Mid-East/Tariffs) are reported as a posterior…"
+        ],
+        "honest_caveat": [
+          "TRADE-CHANNEL INSTRUMENTS ARE WEAK: trade first-stage F ranges 0.6-3.7, ALL below the Stock-Yogo F=10 threshold (diagnostics_summary.csv Mean_F_T). T…",
+          "Sargan over-identification test REJECTS in GFC (67.3%), ESDC (65.5%), and COVID-19 (100%) -> external-instrument validity is contested in those windo…",
+          "Dominant-channel identification is FRAGILE in 6 of 8 sub-periods (method_comparison.csv Identified=FALSE): GFC gives 3 distinct dominant channels acr…",
+          "Rigobon heteroskedasticity-based ID REASSIGNS GFC and COVID-19 dominance to the Behavioural channel (33.1% and 42.2%), directly contradicting the IV/…",
+          "LASSO and DML methods both select Trade as dominant in nearly every period (method_comparison.csv Dominant_LASSO/Dominant_DML), differing from IV/2SL…"
+        ]
+      },
+      "refs": [
+        "Forbes and Rigobon (2002)",
+        "Diebold and Yilmaz (2012)",
+        "Yarovaya et al. (2022)",
+        "Bekaert et al. (2014)",
+        "Schreiber (2000)",
+        "Percival and Walden (2000)",
+        "Han, Linton, Oka and Whang (2016)",
+        "Ando et al. (2022)"
+      ],
+      "cross_links": [
+        "commodity-wqte",
+        "ksg-fc",
+        "mcpfm",
+        "mst-contagion",
+        "namh",
+        "news-networks",
+        "soch",
+        "waveqte"
+      ],
+      "confidence": "high",
+      "provenance_gated": "key_results traced to a gated manuscript or a results file; see workflow wf_9f62c7a3-dff"
+    },
+    {
+      "id": "frontiers-iv",
+      "slot": "IV.1-3",
+      "title": "FRONTIERS IV trilogy (sole-author, Avishek Bhandari): IV.1 \"The Observation Bridge: Recovering Structural Network Equilibria from Observed Directed-Dependence …",
+      "status": "gated; all three manuscripts compiled to PDF (manuscript.pdf + .aux/.toc/.log present, dated 2026-06-18). FRONTIERS IV …",
+      "dir": "frontiers-iv",
+      "key_results": {
+        "IV1_ResultA_point_ID": "|lambda_min(Gtilde)| = (lmax(Phi) - (1-eta))/eta = (lmax(Phi) - Phi_ii)/(1 - Phi_ii); eta = 1 - Phi_ii (Thm bridge eq identify + Lemma eta)",
+        "IV1_boundary_equivalence": "rho(Phi)<1 iff |lmin(Gtilde)|<1; structural instability boundary |lmin(Gtilde)|=1 observationally equivalent to stationarity boundary lmax(Phi)=1 (Thm bridge iii)",
+        "IV2_ResultC_fragility_index": "F(beta) := 1^T (I - beta B)^{-1} 1, finite & positive iff beta*r(B) < 1; at beta=1 finite iff lmin(Phi) > -eta iff eta*lmax(Gtilde) < 1 (converse-Neumann, SS2024 Thm 2.3.6) (Thm fragility i, eq finite-one)",
+        "IV2_two_ends": "Top of sigma(Phi) identifies |lmin(Gtilde)| (substitutes stability, BKD); Bottom of sigma(Phi) identifies r(B) = (1-eta) - lmin(Phi) (cascade Perron root) (Prop twoends)",
+        "IV3_ResultE_recovery": "OLS Phi_hat_T -> Phi a.s. for stable Gaussian VAR(1); plug-in estimators eta_hat, |lmin(Gtilde)|_hat, r(B)_hat, F_hat all -> planted values a.s. as T->infty (Thm recovery)",
+        "IV3_sim_ER_n20_lminGt_relerr": "0.160 (T=500) -> 0.071 (T=2000) -> 0.038 (T=8000); planted |lmin(Gtilde)|=0.500, recovered mean 0.552 -> 0.511 -> 0.507"
+      },
+      "certification": {
+        "STRONG": [
+          "IV1 Result A: affine spectral correspondence sigma(Phi)=(1-eta)-eta*sigma(Gtilde) is a proven exact bijection (Lemma realspec, proof by similarity DG…",
+          "IV1 point identification |lmin(Gtilde)|=(lmax(Phi)-Phi_ii)/(1-Phi_ii) from observables alone, no knowledge of G/D/delta needed (Thm bridge ii) - iden…",
+          "IV1 eta = 1 - Phi_ii point-identified from any diagonal entry (Lemma eta) - identified",
+          "IV1 conditional TE = (1/2) Geweke feedback, support recovery iff g_ij!=0 (Prop te) - proven under Gaussian (M2)",
+          "IV2 Result C identification: r(B)=(1-eta)-lmin(Phi)=Phi_ii-lmin(Phi), fragility index & stability margin functions of observed spectrum alone (Thm fr…",
+          "IV2 existence: F finite iff beta*r(B)<1 (converse-Neumann SS2024 Thm 2.3.6) - proven"
+        ],
+        "PROXY": [
+          "ALL identification results are conditional on the maintained dynamic DGP (M1 interior/linear regime, M2 Gaussian innovations, M3 G symmetric/non-nega…",
+          "IV1 Thm bridge (iii) boundary equivalence rho(Phi)<1 iff |lmin(Gtilde)|<1 needs an auxiliary regularity condition eta <= 1/(1+lmax(Gtilde)) so the le…",
+          "IV1/IV2 Result B/D connectivity (percolation) channel = giant-SCC onset reproduces EGJ prerequisite; PROXY because it relies on consistent FDR-contro…",
+          "IV2 divergence leading coefficient c>0 'holds once the connectivity channel is active' / B irreducible; on a disconnected B divergence proceeds throu…",
+          "pairwise (unconditioned) TE recovers only the reachability CLOSURE of supp(Phi), not exact direct support; exact direct support + weight-ratio readin…",
+          "the structural reading of the deployed systemic-risk aggregate as a Katz/Leontief functional is a qualitative correspondence; crisis>calm spectral-ra…"
+        ],
+        "honest_caveat": [
+          "NO empirical estimates in any of the three papers - all empirical correspondence is explicitly QUALITATIVE; every numerical claim is deferred to 'emp…",
+          "IV.3 recovery is IN-MODEL only: a consistency statement for the maintained DGP, 'not an empirical test against external data, and the simulation grow…",
+          "IV.3 finite-sample bias is real and disclosed: largest single relative error is r(B) rel_err = 0.903 (complete bipartite, n=40, T=500) in results.jso…",
+          "IV.3 Result F multi-attractor is NOT within-model multistability: a stable linear-Gaussian VAR(1) has a UNIQUE stationary distribution and 'cannot ex…",
+          "common-adjustment-speed (M4) is a convenience for the scalar form, not a precondition; relaxing it introduces a bias in the aggregate index that grow…",
+          "no out-of-sample predictive claim and no causal/interventional claim: the directed-dependence object is statistical directionality (Granger/TE) under…"
+        ]
+      },
+      "refs": [
+        "Bramoullé, Y., Kranton, R., and D'Amours, M. (2014). Strategic interaction and networks. American Economic Review, 104(3):898-930. [BKD]",
+        "Elliott, M., Golub, B., and Jackson, M. O. (2014). Financial networks and contagion. American Economic Review, 104(10):3115-3153. [EGJ]",
+        "Elliott, M. and Golub, B. (2022). Networks and economic fragility. Annual Review of Economics, 14:665-696.",
+        "Sargent, T. J. and Stachurski, J. (2024). Economic Networks: Theory and Computation. Cambridge University Press. [SS, cited as 2024]",
+        "Barnett, L., Barrett, A. B., and Seth, A. K. (2009). Granger causality and transfer entropy are equivalent for Gaussian variables. Physical…",
+        "Geweke, J. (1982). Measurement of linear dependence and feedback between multiple time series. JASA, 77(378):304-313.",
+        "Schreiber, T. (2000). Measuring information transfer. Physical Review Letters, 85(2):461-464.",
+        "Cooper, C. and Frieze, A. (2004). The size of the largest strongly connected component of a random digraph with a given degree sequence. Co…"
+      ],
+      "cross_links": [
+        "cid-dynamics-ii",
+        "frontiers-v1-control",
+        "frontiers-v2-recursive",
+        "frontiers-v3-intervene",
+        "frontiers-v5-evolutionary",
+        "mcpfm",
+        "mst-contagion",
+        "namh",
+        "news-networks",
+        "soch"
+      ],
+      "formal": "No Lean module in this directory. (Per project memory, an internal Lean layer exists for the V-series RecursiveControl.lean / EvolutionaryControl.lean, but FRONTIERS IV ships pure on-paper proofs onl…",
+      "confidence": "high",
+      "provenance_gated": "key_results traced to a gated manuscript or a results file; see workflow wf_9f62c7a3-dff"
+    }
+  ],
+  "_extension": {
+    "note": "FRONTIERS V series + the 10 contagion/recovery games added 2026-06-18 via the provenance-gated Extend workflow (wf_9f62c7a3-dff). Remaining candidates for future addition: econstellar systems paper, iref-revision, veralabs-bandit. Same shape; key_results only from a verified computation or a gated manuscript, never recollection.",
+    "rule": "An entry's key_results are only populated from a verified computation or a gated manuscript; never from recollection."
+  }
+}

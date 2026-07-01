@@ -12,16 +12,20 @@ number can be banded against an expectation and reproduced later. The governing
 rule: **a method is not in the catalogue until it ships with a failable test of
 its own output.** The catalogue and that suite of tests are the deliverable.
 
-As of 2026-06-15 the public registry serves **26 methods**. The most recent full
-suite (2026-06-12) recorded **26/26 passing** (synchronous rows against the kernel,
-async rows as real tower jobs). The live release is Cloud Run revision
-`shssm-compute-00036-llf`, re-confirmed on 2026-06-15 serving the 26-method
-registry — `GET /health` → `{methods: 26, revision: shssm-compute-00036-llf,
-sandbox: "timeout", timeout_s: 90}`; `gcloud run services describe` → latest-ready
-`00036-llf`. The prior machine-pinned full run was 23/23 at
-`shssm-compute-00032-c8q`; the machine-written `STATE.md` MEASURED block still
-reflects that earlier pin until the next `scripts/state-refresh.mjs` run (the
-nightly loop that would refresh it is built but not yet installed in `cron`).
+As of 2026-06-18 the public registry serves **31 methods** — `GET /health` →
+`{methods: 31, revision: shssm-compute-00048-lxc, sandbox: "timeout", timeout_s: 90}`.
+The §A2 registry below itemises the original **26**; the five served since are
+`news_attention_te` (FRONTIERS III, added at rev `…-00045-ns8`) and the four
+FRONTIERS V.2 control operators `lq_regulator`, `bellman_value`, `turnpike`,
+`fragility_barrier` (added at rev `…-00046-mbx`; verified by `test/v5-control.test.mjs`
+and `test/gate-enforcement.test.mjs`). Completing their §A2 rows is tracked debt.
+The most recent committed full suite (2026-06-12) recorded **26/26 passing** at
+`shssm-compute-00036-llf` (the prior machine-pinned run was 23/23 at
+`shssm-compute-00032-c8q`); the machine-written `STATE.md` MEASURED block still
+reflects an earlier pin (27) until the next `scripts/state-refresh.mjs` run. That
+refresh is wired into a nightly loop installed in `cron` on 2026-06-15 that, as of
+this writing, has not yet fired — so `evals.json` carries 26 rows against 31 live
+methods, an eval-coverage gap owed the control and `news_attention_te` rows.
 
 ---
 
@@ -114,7 +118,10 @@ they return `503 daily_capacity` with a reset hint, never a fabricated answer.
 
 ## §A2 — Method registry (canonical)
 
-The 26 methods, grouped into six families. **Value** and **band/check** are the
+The original 26 methods, grouped into six families (the live registry now serves
+**31** — see the §A intro for the five later additions, `news_attention_te` and the
+four FRONTIERS V.2 control operators, whose table rows are tracked debt). **Value**
+and **band/check** are the
 verified figure and the pre-registered acceptance criterion from the committed
 runner `econstellar/evals/run-evals.mjs` (the bands are this table; the runner
 cites `A2`). Bands are never hand-edited (K5); `evals.json` is always one genuine

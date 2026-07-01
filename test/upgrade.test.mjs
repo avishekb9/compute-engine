@@ -26,14 +26,14 @@ function check(name, ok, detail = "") {
 const throwingToken = () => { throw new Error("token minted on a path that must not spend"); };
 
 // reset every per-capability counter so the run is deterministic in-process
-for (const c of ["embeddings", "grounded_search", "gemini_vertex_flash", "gemini_vertex_pro", "batch_predict"])
+for (const c of ["embeddings", "grounded_search", "gemini_vertex_flash", "gemini_vertex_pro", "batch_predict", "multimodel"])
   capBudgetReset(c);
 
 await (async () => {
 
   // U-E1 — every capability defaults OFF (Invariant 16)
   const menu = capabilityMenu({});
-  check("U-E1 all four capabilities default OFF", menu.length === 4 && menu.every(c => c.enabled === false),
+  check("U-E1 all five capabilities default OFF", menu.length === 5 && menu.every(c => c.enabled === false),
     menu.map(c => `${c.name}:${c.enabled}`).join(" "));
 
   // a flag-OFF call returns CAPABILITY_OFF and never reaches a paid call
@@ -119,6 +119,24 @@ await (async () => {
     check("U-E8 secret-scan blocks dummy (exit≠0) then clears (exit 0), redacted",
       blocked.status === 2 && cleared.status === 0 && redacted,
       `blocked=${blocked.status} cleared=${cleared.status} redacted=${redacted}`);
+  }
+
+  // U-E9 — multimodel (Claude-on-Vertex second-opinion) governance: default OFF,
+  // typed-param gate, and the spend ceiling trips AND mints no token (same contract
+  // as the other paid caps). No paid call is reachable: OFF/BAD return before execute,
+  // the happy path uses dryRun, and the over-cap path is given the throwing token spy.
+  {
+    capBudgetReset("multimodel");
+    const offR = await runCapability("multimodel", { contents: "review this" }, { env: {}, tokenFn: throwingToken });
+    const env = { CE_CAP_MULTIMODEL: "1", CE_MULTIMODEL_PER_DAY: "2" };
+    const badR = await runCapability("multimodel", { contents: "" }, { env, tokenFn: throwingToken });
+    const a = await runCapability("multimodel", { contents: "q1" }, { env, dryRun: true });
+    const b = await runCapability("multimodel", { contents: "q2" }, { env, dryRun: true });
+    const overR = await runCapability("multimodel", { contents: "q3" }, { env, tokenFn: throwingToken });
+    capBudgetReset("multimodel");
+    check("U-E9 multimodel → OFF, BAD_PARAMS, ceiling trips CAP_EXCEEDED, no token minted",
+      offR.code === "CAPABILITY_OFF" && badR.code === "BAD_PARAMS" && a.code === "DRY_OK" && b.code === "DRY_OK" && overR.code === "CAP_EXCEEDED",
+      `${offR.code} ${badR.code} ${a.code} ${b.code} ${overR.code}`);
   }
 
 })();

@@ -2,6 +2,7 @@
 .jobs/
 .cache/
 *.log
+compute-reports/
 
 # never commit secrets / local env
 .env

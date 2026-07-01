@@ -229,12 +229,64 @@ const batchPredict = {
   },
 };
 
+// ── Capability 5: Claude on Vertex (Model Garden) — second-opinion reviewer ───
+// Launch-order #5. A DIFFERENT-family model (Anthropic Claude via the Vertex
+// rawPredict surface) that cross-checks the engine's Gemini research answer. Same
+// no-number contract as every other cap: Claude REVIEWS the answer's reasoning and
+// claims — it originates no number (every number still traces to the registry
+// run_analysis). Claude on Vertex is served from its own endpoints, so it carries its
+// own LOCATION; both model and location are env-set because the Anthropic models must
+// first be enabled in Model Garden for this project (a one-time console action that
+// accepts Anthropic's terms), so changing model/region needs no code change. The
+// default is the strongest model (`claude-opus-4-8`, which the PI enabled on Vertex) on the
+// recommended `global` endpoint (no regional pricing premium); set
+// CE_MULTIMODEL_MODEL=claude-sonnet-4-6 for a cheaper review. Billed per token; bounded to
+// CE_MULTIMODEL_PER_DAY calls/day. (Access is enabled; an online-prediction quota grant is
+// the remaining gate before a live call succeeds — see upgrade/UPGRADE_LEDGER.md.)
+const multimodel = {
+  name: "multimodel", flagEnv: "CE_CAP_MULTIMODEL", originatesNoNumber: true,
+  precheck(params, env) {
+    if (!flagOn(env, this.flagEnv)) return off(this.name);
+    const contents = params && params.contents;
+    if (typeof contents !== "string" || !contents.trim()) return bad(this.name, "contents must be a non-empty string");
+    const maxChars = intEnv(env, "CE_MULTIMODEL_MAX_CHARS", 100000);
+    if (contents.length > maxChars) return bad(this.name, `contents exceeds ${maxChars} chars`);
+    const perDay = intEnv(env, "CE_MULTIMODEL_PER_DAY", 50);
+    const b = capBudget("multimodel", perDay, 1);   // reserve BEFORE the call
+    if (!b.ok) return over(this.name, b);
+    const model = (env.CE_MULTIMODEL_MODEL || "claude-opus-4-8").trim();
+    const location = (env.CE_MULTIMODEL_LOCATION || "global").trim();
+    const maxTokens = intEnv(env, "CE_MULTIMODEL_MAX_TOKENS", 1024);
+    return { ok: true, plan: { kind: "multimodel", model, location, contents, maxTokens } };
+  },
+  async execute(plan, { tokenFn }) {
+    const tok = await (tokenFn || metadataToken)();
+    // Anthropic-on-Vertex rawPredict: the model id is in the URL, the body is the
+    // Anthropic Messages shape carrying the required vertex anthropic_version (and
+    // NO model field in the body). The bearer is header-only, never logged.
+    // Endpoint host differs by location: the recommended `global` endpoint is the
+    // UNPREFIXED host `aiplatform.googleapis.com` (with locations/global in the path),
+    // whereas a regional endpoint is `<region>-aiplatform.googleapis.com`.
+    const host = plan.location === "global" ? "aiplatform.googleapis.com" : `${plan.location}-aiplatform.googleapis.com`;
+    const url = `https://${host}/v1/projects/${PROJECT}/locations/${plan.location}/publishers/anthropic/models/${plan.model}:rawPredict`;
+    const res = await postJSON(url, tok, {
+      anthropic_version: "vertex-2023-10-16",
+      max_tokens: plan.maxTokens,
+      messages: [{ role: "user", content: plan.contents }],
+    });
+    if (!res.ok) return res;
+    const text = ((res.data && res.data.content) || []).filter(p => p && p.type === "text").map(p => p.text).join("");
+    return { ok: true, code: "OK", cap: this.name, model: plan.model, text, stop_reason: (res.data && res.data.stop_reason) || null };
+  },
+};
+
 // the registry, keyed by capability name
 export const CAPS = {
   embeddings,
   grounded_search: groundedSearch,
   gemini_vertex: geminiVertex,
   batch_predict: batchPredict,
+  multimodel,
 };
 
 // Single entry point a route would call. Governance first; the paid call is only

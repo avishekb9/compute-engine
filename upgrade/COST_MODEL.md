@@ -32,6 +32,7 @@ Conversion used for reconciliation: USD 1 ~= Rs. 84 (documented approximation).
 | **Vertex AI Search / grounding** (`discoveryengine`) | ~$2–4 / 1k queries (grounding ~$2.5 / 1k) | inner cap **200 grounded queries/day**; datastore must exist first | 200 x ~$0.0035 ~= **$0.7/day (~Rs. 60/day)**, billed to the GenAI pool | **YES (when datastore built)** — else NOT-LAUNCHABLE (no datastore = hole) |
 | **Text embeddings** (`text-embedding-004` class) | ~$0.025 / 1M tokens | inner cap **2M embedded tokens/day**, batch size <=1k docs | 2M x $0.025/1M ~= **$0.05/day (~Rs. 4/day)** | **YES** — negligible |
 | **Batch prediction** | per-token, async, ~Flash rate | inner cap **1 batch/day, <=50k items, <=$5 worst case** | **<=$5/day (~Rs. 420/day)** | **YES** — bounded by batch-size cap |
+| **Claude on Vertex** (`multimodel`, second-opinion review; default `claude-opus-4-8`) | ~$15 / 1M in, ~$75 / 1M out (Opus-class, list) | inner cap **50 calls/day**, contents <=100k chars (~25k tok), out <=1024 tok | 50 x (~25k in + 1k out) ~= 50 x ~$0.45 ~= **$22.5/day (~Rs. 2150/day)** | **ENABLED, but quota=0** — NOT-LAUNCHABLE until an online-prediction quota-increase is granted |
 | **Claude-in-Chrome verify** | $0 GCP (Anthropic-side, observe-only) | n/a (no GCP spend); rate-bound by in-session tool use | **$0 GCP** | **YES** — no GCP cost |
 | **Meta / Instagram APIs** | $0 (Graph API free tier) | DEFAULT-OFF (Invariant 16); no engine wiring | **$0** (not wired) | **N/A — not wired** |
 
@@ -44,10 +45,11 @@ Gemini Pro     ~Rs. 1300
 Vertex Search  ~Rs.   60   (GenAI pool)
 Embeddings     ~Rs.    4
 Batch          ~Rs.  420
+Claude/Vertex  ~Rs. 2150   (Opus-class default claude-opus-4-8)
 ------------------------------
-TOTAL          ~Rs. 1904 / day  worst-case, all surfaces saturated
+TOTAL          ~Rs. 4054 / day  worst-case, all surfaces saturated
 ```
-Monthly worst case ~Rs. 57k. Against ~Rs. 5.78 lakh headroom that is **~10 months of
+Monthly worst case ~Rs. 122k. Against ~Rs. 5.78 lakh headroom that is **~4.7 months of
 continuous worst-case saturation** before exhaustion, and the earliest credit expiry
 (2027-02-24) arrives first — i.e. the credits expire before saturated spend could exhaust
 them. **Every paid surface is individually bounded below headroom and the total is bounded.**
@@ -67,6 +69,12 @@ them. **Every paid surface is individually bounded below headroom and the total 
   - **UPDATE 2026-06-15 (hole filled):** datastore `econstellar-literature` + engine
     `econstellar-literature-search` built (63 docs from `literature.papers`);
     grounded_search is now **LIVE** with a 200 q/day ceiling. No longer a hole.
+- **Claude on Vertex (`multimodel`)** is ENABLED (PI Marketplace-purchased Opus 4.8, 2026-06-16)
+  and bounded on cost (worst-case ~$22.5/day at the Opus-class default `claude-opus-4-8`; the
+  `global` endpoint carries no regional premium) — but the **online-prediction quota is 0** for
+  `anthropic-claude-opus` across global and all regional endpoints (live 429). NOT-LAUNCHABLE
+  until a **quota-increase request** is granted + a live smoke returns `code:OK`. Recorded as a
+  hole (2026-06-16), not assumed. Code-complete and flag-OFF; activation is PI-gated.
 - Nothing else is cost-blocked; all are flag-OFF pending Prompt 7 evals.
 
 ## UPDATE 2026-06-15 — capabilities activated (PI-authorised)

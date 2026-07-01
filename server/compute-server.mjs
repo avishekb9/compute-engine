@@ -46,6 +46,7 @@ const ALLOWED_EVENTS = new Set(["portal","reproduce","changelog","workbench","em
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ENGINE_DIR = join(__dirname, "..");        // compute-engine/
+let KNOWLEDGE_BANK;                               // lazy-loaded read-only academic-games manifest (/api/knowledge)
 const R_DIR = join(ENGINE_DIR, "r");
 const WEB_DIR = join(ENGINE_DIR, "web");
 // Data root holding papers/contagion-channels/data/G20.xlsx. Honor an explicit
@@ -385,6 +386,57 @@ const METHODS = {
     returns: ["method", "dataset", "k", "lag", "n_series", "n_obs", "n_pairs", "topics", "te_matrix", "strongest_edge", "raw_out_strength_top", "raw_in_strength_top", "compute_path", "gpu_device", "runtime_s", "deterministic", "note", "interpretation"],
     paper: null, deprecated: false,
     changelog: [{ version: "1.0.0", note: "Frontiers III directed news-attention TE network; deterministic raw max-norm KSG (shared _ksg_core), reproduces the paper's TE_matrix at published precision; significance via async ksg_te on dataset=news_attention" }],
+  },
+  // ── v5: Bellman control-operator layer (FRONTIERS V.2 Recursive Control) ──────
+  // Four parameterised-only operators over the M3-faithful calibrated plant shipped
+  // in r/fixtures/v5_control_plant.json (derived from the MST panel by the published
+  // V.2 pipeline; provenance stamped in every result). Each reproduces a V.2
+  // results.json golden value. Every returned quantity carries its Project-V
+  // certification-gate class (STRONG controllable / PROXY hedged / UNIDENTIFIED
+  // refused). On-paper proofs stand alone; no machine-proof claim is made here.
+  lq_regulator: {
+    runner: "r", script: "lq_regulator.R",
+    label: "LQ Regulator — optimal additive control (FRONTIERS V.2 · T1)",
+    category: "Optimal Control · Recursive (Econstellar v5)",
+    desc: "Discounted linear-quadratic-Gaussian regulator on the recovered partial-adjustment plant: solves the discrete algebraic Riccati equation for the optimal additive-injection feedback, verifies certainty equivalence (the feedback is independent of the shock loading C — only the value constant moves), and reports the closed-loop spectral radius and the discounted-cost ranking optimal <= V.1-threshold < open. Reproduces FRONTIERS V.2 Theorem 1 on the stressed crisis calibration: the uncontrolled plant is non-stationary (rho 1.207, infinite discounted cost) and the optimal feedback stabilises it (closed-loop rho 0.424) at cost 540.2 < threshold 723.5 < infinity. The DARE is solved by a Riccati value-recursion plus a quadratically-convergent policy-iteration polish (DARE residual ~1e-15); it agrees with a Schur solver to ~4e-9, the DARE forward-error floor for this near-unstable plant. Bounded (n=26 fixture, sub-second). Gate: closed-loop rho / feedback / r(B) are STRONG.",
+    params: { anchor: { type: "enum", values: ["v2_crisis"], optional: true }, q_ctrl: { type: "num", optional: true }, beta: { type: "num", optional: true }, target: { type: "symbol", optional: true } },
+    version: "1.1.0", capability: "control", primitives: [], long_running: false, min_obs: 0,
+    returns: ["method", "theorem", "control_target", "control_target_gate", "anchor", "n", "beta", "q_ctrl", "drift", "rB_stress", "rho_open", "beta_rho2_open", "open_loop_nonstationary", "trace_P", "F_norm2", "rho_closed", "closed_loop_stationary", "certainty_equivalence_residual", "d_C1", "d_C2", "J_optimal", "J_threshold", "J_open", "rho_threshold", "eta_safe", "cost_ranking_holds", "interpretation", "gate", "provenance"],
+    paper: "FRONTIERS V.2", deprecated: false,
+    changelog: [{ version: "1.0.0", note: "v5 control layer; reproduces V.2 T1 (DARE feedback, certainty equivalence, cost ranking) on the calibrated crisis plant" }, { version: "1.1.0", note: "gate enforcement: optional `target` param (default rB) is checked against the Project-V certification gate; an UNIDENTIFIED target (e.g. G_ij, delta_i) is refused with an honest error, never answered with a number; result stamps control_target + control_target_gate" }],
+  },
+  bellman_value: {
+    runner: "r", script: "bellman_value.R",
+    label: "Bellman Value Iteration — recursive structural control (FRONTIERS V.2 · T2)",
+    category: "Optimal Control · Recursive (Econstellar v5)",
+    desc: "The keystone operator: value-iterates the nonlinear Bellman operator for structural (adjustment-speed) control to its unique fixed point, the optimal value function whose contraction fixed point is the completion of the space. The holding cost is the calibrated stationary activity trace(Sigma_x)(eta); the control adjusts the speed at quadratic cost. Reproduces FRONTIERS V.2 Theorem 2: the operator contracts at modulus equal to the discount factor (the successive differences fall at rate beta = 0.95) and converges in 406 steps to a policy whose rest point (eta = 0.9675) is the turnpike. Bounded (n=26 fixture, sub-second). Gate: the contraction, the value function, and the rest point are STRONG.",
+    params: { c_adj: { type: "num", optional: true }, shock_sd: { type: "num", optional: true }, target: { type: "symbol", optional: true } },
+    version: "1.1.0", capability: "control", primitives: [], long_running: false, min_obs: 0,
+    returns: ["method", "theorem", "control_target", "control_target_gate", "n", "beta", "c_adj", "shock_sd", "iters", "contraction_ratio", "contraction_matches_beta", "policy_rest_eta", "value_at_rest", "diffs_head", "diffs_tail", "interpretation", "gate", "provenance"],
+    paper: "FRONTIERS V.2", deprecated: false,
+    changelog: [{ version: "1.0.0", note: "v5 control keystone; reproduces V.2 T2 (Bellman contraction at rate beta, 406 steps, turnpike rest point)" }, { version: "1.1.0", note: "gate enforcement: optional `target` param (default eta) checked against the Project-V certification gate; an UNIDENTIFIED target is refused with an honest error; result stamps control_target + control_target_gate" }],
+  },
+  turnpike: {
+    runner: "r", script: "turnpike.R",
+    label: "Turnpike + Saddle — Hamiltonian steady state (FRONTIERS V.2 · T3)",
+    category: "Optimal Control · Recursive (Econstellar v5)",
+    desc: "Locates the interior turnpike (the activity-minimising adjustment speed) of the continuous-time Hamiltonian control problem, confirms it coincides with FRONTIERS V.1's static interior optimum (a convergence invariant — if the dynamic turnpike drifts from the static optimum the operator flags it), and reports the (state, costate) Jacobian eigenvalues that make the steady state a saddle (opposite-sign, one-dimensional stable manifold = the optimal path). Also maps the turnpike against the cascade-vs-activity cost ratio (monotone). Reproduces FRONTIERS V.2 Theorem 3: turnpike eta-bar = 0.9675, Jacobian eigenvalues -0.015 and +0.066. Bounded (n=26 fixture, sub-second). Gate: the turnpike and saddle are STRONG.",
+    params: {},
+    version: "1.0.0", capability: "control", primitives: [], long_running: false, min_obs: 0,
+    returns: ["method", "theorem", "n", "beta", "eta_bar", "trace_min", "v1_interior_optimum", "turnpike_matches_v1", "ell_pp", "rho_c", "jacobian_eigs", "is_saddle", "stable_manifold_dim", "cost_ratio_theta", "cost_ratio_eta_bar", "turnpike_monotone_in_cost_ratio", "interpretation", "gate", "provenance"],
+    paper: "FRONTIERS V.2", deprecated: false,
+    changelog: [{ version: "1.0.0", note: "v5 control layer; reproduces V.2 T3 (turnpike = V.1 interior optimum, saddle Jacobian) with the convergence invariant checked live" }],
+  },
+  fragility_barrier: {
+    runner: "r", script: "fragility_barrier.R",
+    label: "Fragility Barrier + Bifurcation diagnostic (FRONTIERS V.2 · T4)",
+    category: "Optimal Control · Recursive (Econstellar v5)",
+    desc: "Locates the feasibility barrier beta*r(B)=1 (where the cascade resolvent and fragility multiplier diverge) and computes the period-doubling diagnostic for a high-gain nonlinear feedback rule on the scalar spectral position: the flip-bifurcation onset gain (analytic and numerically located, in agreement) and the largest Lyapunov exponent, with the onset gain collapsing toward zero as the operating root approaches the barrier. Reproduces FRONTIERS V.2 Theorem 4: onset gain 2.745, a positive largest Lyapunov exponent (~0.66, a computed chaotic band). HONEST: this is a computed dynamical-systems diagnostic (onset + Lyapunov sign), NOT a stability proof; the exact Lyapunov magnitude in the deep-chaotic band is not bit-reproducible across implementations (sensitive dependence is the diagnosed property) — the reproducible claims are the onset gains and the positive sign. Heaviest control method (~8s, bounded). Gate: the barrier is STRONG; the fragility index F is PROXY (explicit beta).",
+    params: { beta_cascade: { type: "num", optional: true } },
+    version: "1.0.0", capability: "control", primitives: [], long_running: false, min_obs: 0,
+    returns: ["method", "theorem", "beta_cascade", "barrier", "sigma_bar", "beta_cascade_rB_stress", "g_onset_analytic", "g_onset_numeric", "onset_analytic_matches_numeric", "g_chaos", "largest_lyapunov_max", "chaotic_band_present", "onset_sensitivity", "interpretation", "diagnostic_note", "gate", "provenance"],
+    paper: "FRONTIERS V.2", deprecated: false,
+    changelog: [{ version: "1.0.0", note: "v5 control layer; reproduces V.2 T4 (barrier, flip onset, positive Lyapunov sign); Lyapunov magnitude flagged sensitive-dependent / not bit-reproducible" }],
   },
 };
 
@@ -1043,7 +1095,51 @@ async function researchTurn(query, userContext) {
   const gm = cand?.groundingMetadata || {};
   const citations = (gm.groundingChunks || []).map(c => ({ title: c.web?.title || null, uri: c.web?.uri || null })).filter(c => c.uri);
   const searches = gm.webSearchQueries || [];
-  return { answer, citations, searches, analyses, model: RESEARCH_MODEL, steps: analyses.length };
+  const result = { answer, citations, searches, analyses, model: RESEARCH_MODEL, steps: analyses.length };
+  // Second-opinion verification: a DIFFERENT-family model (Claude on Vertex, the
+  // Track-B `multimodel` capability) cross-checks the answer for unsupported claims
+  // and inconsistency with the live analyses. Flag-gated (CE_CAP_MULTIMODEL default
+  // OFF) and best-effort — OFF / unavailable / timeout / error degrades silently and
+  // the answer is returned unchanged, exactly like the literature pre-search above.
+  try {
+    const verification = await verifyAnswer(query, result);
+    if (verification) result.verification = verification;
+  } catch (e) { logLine({ path: "/api/research", event: "verify_error", error: e.message }); }
+  return result;
+}
+
+// Ask the `multimodel` capability (Claude on Vertex) for an independent second
+// opinion on a finished research answer. Returns null when the cap is OFF /
+// unavailable / times out — it never throws into /api/research. Claude is the
+// reviewer, not a co-author: the prompt forbids inventing or recomputing any
+// number, so the engine's no-number contract (every number from run_analysis) holds.
+const VERIFY_TIMEOUT_MS = 45000;
+async function verifyAnswer(query, result) {
+  const digest = (result.analyses && result.analyses.length)
+    ? result.analyses.map(a => a.error
+        ? `- ${a.method}: FAILED ${a.error}`
+        : `- ${a.method}(${JSON.stringify(a.params || {})}) -> ${JSON.stringify(a.result).slice(0, 800)}`).join("\n")
+    : "(no live analyses were run for this query)";
+  const prompt =
+    "You are a second, independent reviewer from a different model family, cross-checking a research answer produced " +
+    "by a colleague's econometrics engine. You did NOT run the analyses and must NOT invent or recompute any number — " +
+    "your job is to flag problems, not to rewrite the answer.\n\n" +
+    `RESEARCH QUESTION:\n${query}\n\n` +
+    `LIVE ANALYSES EXECUTED (the only admissible source of numbers):\n${digest}\n\n` +
+    `ANSWER UNDER REVIEW:\n${result.answer}\n\n` +
+    "Check for: (1) claims unsupported by the live analyses or by cited sources; (2) any number in the answer that does " +
+    "not trace to the analyses above; (3) internal inconsistency or overstated certainty; (4) econometric errors (e.g. " +
+    "calling a price level stationary). Reply in <=180 words: open with 'VERDICT: <agree | minor concerns | major " +
+    "concerns>', then up to four short bullets. If you find nothing wrong, say so plainly.";
+  const r = await Promise.race([
+    runCapability("multimodel", { contents: prompt }),
+    new Promise(res => setTimeout(() => res({ ok: false, code: "VERIFY_TIMEOUT" }), VERIFY_TIMEOUT_MS)),
+  ]);
+  if (!r || r.ok !== true || !r.text) {
+    if (r && r.code && r.code !== "CAPABILITY_OFF") logLine({ path: "/api/research", event: "verify_skip", code: r.code });
+    return null;
+  }
+  return { model: r.model, review: r.text };
 }
 
 // ── literature graph (Vision Phase 29.4/29.5) ─────────────────────────────────
@@ -1390,6 +1486,29 @@ const server = createServer(async (req, res) => {
       (capabilities[m.capability] ||= []).push(id);
     }
     return send(200, "application/json", JSON.stringify({ methods: METHODS, datasets: DATASETS, capabilities }));
+  }
+
+  // ── read-only Econstellar knowledge bank (internal linking + MCP info exchange) ──
+  // Serves the academic-games manifest bundled at compute-engine/knowledge-bank.json
+  // (synced from ivy-fineco/papers/frontiers-v/knowledge-bank.json before deploy).
+  // READ-ONLY: this surface never writes the bank; updates are proposal-gated off-engine.
+  if (u.pathname === "/api/knowledge" || u.pathname === "/api/knowledge/query") {
+    if (KNOWLEDGE_BANK === undefined) {
+      try { KNOWLEDGE_BANK = JSON.parse(readFileSync(join(ENGINE_DIR, "knowledge-bank.json"), "utf8")); }
+      catch { KNOWLEDGE_BANK = null; }
+    }
+    if (!KNOWLEDGE_BANK) return send(503, "application/json", JSON.stringify({ error: "knowledge_bank_unavailable" }));
+    if (u.pathname === "/api/knowledge")
+      return send(200, "application/json", JSON.stringify(KNOWLEDGE_BANK));
+    // /api/knowledge/query?game=<id|slot> | ?topic=<substring over title/results/refs>
+    const game = (u.searchParams.get("game") || "").toLowerCase();
+    const topic = (u.searchParams.get("topic") || "").toLowerCase();
+    let games = KNOWLEDGE_BANK.games || [];
+    if (game) games = games.filter(g => (g.id || "").toLowerCase() === game || (g.slot || "").toLowerCase() === game);
+    if (topic) games = games.filter(g => JSON.stringify(g).toLowerCase().includes(topic));
+    return send(200, "application/json", JSON.stringify({
+      schema: KNOWLEDGE_BANK.schema, shared_invariants: KNOWLEDGE_BANK.shared_invariants,
+      certification_ledger: KNOWLEDGE_BANK.certification_ledger, matched: games.length, games }));
   }
 
   // ── privacy-respecting usage beacon (T3.2): aggregate counts only, no PII ──
