@@ -1473,7 +1473,7 @@ const server = createServer(async (req, res) => {
   }
 
   if (u.pathname === "/health")
-    return send(200, "application/json", JSON.stringify({ ok: true, sandbox: HAVE_BWRAP ? "bwrap" : "timeout", methods: Object.keys(METHODS).length, timeout_s: JOB_TIMEOUT_S, revision: process.env.K_REVISION || "local" }));
+    return send(200, "application/json", JSON.stringify({ ok: true, sandbox: HAVE_BWRAP ? "bwrap" : "timeout", methods: Object.keys(METHODS).length, timeout_s: JOB_TIMEOUT_S, revision: process.env.K_REVISION || "local", build: process.env.BUILD_SHA || "dev" }));
 
   if (u.pathname === "/metrics")
     return send(200, "application/json", JSON.stringify(metricsSnapshot()));

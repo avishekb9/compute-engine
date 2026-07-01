@@ -29,6 +29,37 @@ NEWS="$REPO/papers/news-networks/data/news_attention_logchange.csv"   # news_att
 [ -f "$NAMHPKG" ] || { echo "ERROR: namh tarball not found at $NAMHPKG (build: R CMD build papers/namh/code/namh-pkg)"; exit 1; }
 [ -f "$NEWS" ] || { echo "ERROR: news-attention panel not found at $NEWS"; exit 1; }
 
+# ---- provenance + pre-promotion gates (Tier-0 hardening) ----
+# Refuse to ship source that is not in git (that is how the live engine became
+# unreproducible). Stamp the git SHA into the image via BUILD_SHA so /health
+# reports exactly which commit is serving.
+GIT_SHA="$(git -C "$ENGINE" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+if [ -n "$(git -C "$ENGINE" status --porcelain 2>/dev/null)" ]; then
+  if [ "${ALLOW_DIRTY:-0}" = "1" ]; then
+    GIT_SHA="${GIT_SHA}-dirty"; echo "WARN: deploying a DIRTY working tree as $GIT_SHA (ALLOW_DIRTY=1)."
+  else
+    echo "ERROR: working tree is dirty; the deployed source would not be reproducible from git."
+    echo "       Commit or stash first, or re-run with ALLOW_DIRTY=1 to override."
+    git -C "$ENGINE" status --short
+    exit 1
+  fi
+fi
+
+# Pre-promotion eval gate: the fast unit tests must pass before we ship.
+if [ "${SKIP_TESTS:-0}" = "1" ]; then
+  echo "WARN: SKIP_TESTS=1 - skipping the pre-promotion test gate."
+else
+  echo "Pre-promotion tests ..."
+  if node --test "$ENGINE"/test/upgrade.test.mjs "$ENGINE"/test/gate-enforcement.test.mjs \
+        "$ENGINE"/test/knowledge-bank.test.mjs "$ENGINE"/test/skill-registry-coherence.test.mjs \
+        "$ENGINE"/test/v5-control.test.mjs >/dev/null 2>&1; then
+    echo "  tests passed."
+  else
+    echo "ERROR: pre-promotion tests failed - aborting deploy (override with SKIP_TESTS=1 if you know why)."
+    exit 1
+  fi
+fi
+
 # GOOGLE_API_KEY enables the /api/chat Gemini analyst. Read from env or
 # versiondevs/.env.local (one level above ivy-fineco); never printed/committed.
 KEY="${GOOGLE_API_KEY:-}"
@@ -51,6 +82,10 @@ mkdir -p "$BUILD/data-root/papers/news-networks/data"
 cp "$NEWS" "$BUILD/data-root/papers/news-networks/data/news_attention_logchange.csv"
 
 echo "Build context: $BUILD"
+# NOTE: --set-env-vars REPLACES the whole env on each deploy, so any capability
+# flag not listed here is dropped. To keep flags across deploys, set CE_CAP_ENV,
+# e.g. CE_CAP_ENV="CE_CAP_GROUNDED_SEARCH=1,CE_GROUNDED_DATASTORE=econstellar-literature"
+# It defaults to empty, so the current all-off state is preserved unless you pin.
 gcloud run deploy "$SERVICE" \
   --source "$BUILD" \
   --project "$PROJECT" \
@@ -59,8 +94,17 @@ gcloud run deploy "$SERVICE" \
   --allow-unauthenticated \
   --memory 2Gi --cpu 2 --timeout 300 \
   --min-instances 0 --max-instances 2 --concurrency 16 \
-  --set-env-vars "HOST=0.0.0.0,COMPUTE_TIMEOUT_S=90,MAX_CONCURRENT=8,MAX_LLM_PER_DAY=400${KEY:+,GOOGLE_API_KEY=$KEY}" \
+  --set-env-vars "HOST=0.0.0.0,COMPUTE_TIMEOUT_S=90,MAX_CONCURRENT=8,MAX_LLM_PER_DAY=400,BUILD_SHA=$GIT_SHA${KEY:+,GOOGLE_API_KEY=$KEY}${CE_CAP_ENV:+,$CE_CAP_ENV}" \
   --quiet
 
-echo "URL:"
-gcloud run services describe "$SERVICE" --project "$PROJECT" --region "$REGION" --account "$ACCOUNT" --format='value(status.url)'
+URL="$(gcloud run services describe "$SERVICE" --project "$PROJECT" --region "$REGION" --account "$ACCOUNT" --format='value(status.url)')"
+echo "URL: $URL"
+
+# ---- post-deploy verification (Tier-0 hardening) ----
+# Surface the served build SHA, method count, revision, and each managed
+# capability's on/off state, so an env-drop or a stale image is visible at once.
+echo "Verifying deployment ..."
+sleep 3
+curl -fsS "$URL/health" 2>/dev/null | sed 's/^/  health: /' || echo "  health: UNREACHABLE"
+curl -fsS "$URL/api/upgrade/menu" 2>/dev/null | sed 's/^/  upgrade-menu: /' || echo "  upgrade-menu: unavailable"
+echo "  expected build=$GIT_SHA (compare with health.build; a mismatch means a stale image is serving)"
