@@ -17,8 +17,8 @@ RUN . /etc/os-release && \
     R -e "options(repos=c(CRAN=paste0('https://packagemanager.posit.co/cran/__linux__/', Sys.getenv('CODENAME','jammy'), '/latest'))); \
           .codename <- '${VERSION_CODENAME}'; \
           options(repos=c(CRAN=paste0('https://packagemanager.posit.co/cran/__linux__/', .codename, '/latest'))); \
-          install.packages(c('jsonlite','readxl','urca','tseries','vars','waveslim','quantreg','plm','lmtest','frequencyConnectedness','igraph','rugarch','rmgarch','xts','RANN','fracdiff'))" && \
-    R -e "for (p in c('jsonlite','readxl','urca','tseries','vars','waveslim','quantreg','plm','lmtest','frequencyConnectedness','igraph','rugarch','rmgarch','xts','zoo','MASS','RANN','fracdiff')) if(!requireNamespace(p,quietly=TRUE)) stop(paste('MISSING',p))"
+          install.packages(c('jsonlite','readxl','urca','tseries','vars','waveslim','quantreg','plm','lmtest','frequencyConnectedness','igraph','rugarch','rmgarch','xts','RANN','fracdiff','FNN'))" && \
+    R -e "for (p in c('jsonlite','readxl','urca','tseries','vars','waveslim','quantreg','plm','lmtest','frequencyConnectedness','igraph','rugarch','rmgarch','xts','zoo','MASS','RANN','fracdiff','FNN')) if(!requireNamespace(p,quietly=TRUE)) stop(paste('MISSING',p))"
 
 # Published SOCH package (CRAN-candidate v0.1.0) from the bundled tarball — the
 # soch_profile method runs the paper's own code (Bhandari & Parida 2026), not a
@@ -49,6 +49,20 @@ RUN R CMD INSTALL /tmp/namh.tar.gz && \
     R -e "if(!requireNamespace('namh',quietly=TRUE)) stop('MISSING namh')" && \
     R -e "if(!nzchar(system.file('extdata','G20_24_returns_yahoo.rds',package='namh'))) stop('MISSING g20_24 extdata')" && \
     rm -f /tmp/namh.tar.gz
+
+# Published mstcontagion package (v0.1.0, GPL-3) from the bundled tarball — the
+# regime_conditioned_te method runs the paper's own code (Parida, Bhandari &
+# Sahu 2026, github.com/avishekb9/mstcontagion): MODWT wavelet decomposition,
+# the shared KSG/Frenzel-Pompe estimator, and endogenous Markov-switching
+# regime dating, not a reimplementation. Its bundled extdata
+# (Returns_prices.csv, stress_regimes.csv) is the crisis_regime_panel dataset
+# fallback, read via system.file in _io.R. Deps (waveslim, FNN, vars,
+# frequencyConnectedness, zoo, parallel) are installed above.
+COPY mstcontagion_0.1.0.tar.gz /tmp/mstcontagion.tar.gz
+RUN R CMD INSTALL /tmp/mstcontagion.tar.gz && \
+    R -e "if(!requireNamespace('mstcontagion',quietly=TRUE)) stop('MISSING mstcontagion')" && \
+    R -e "if(!nzchar(system.file('extdata','Returns_prices.csv',package='mstcontagion'))) stop('MISSING crisis_regime_panel extdata')" && \
+    rm -f /tmp/mstcontagion.tar.gz
 
 # Node 20 (the server is zero-dep ESM; only needs node:http/https/child_process/fs).
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates gnupg && \

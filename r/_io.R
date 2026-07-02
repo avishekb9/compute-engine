@@ -29,7 +29,14 @@ DATASETS <- list(
   ## papers/news-networks/data/README.md (build_network.py::stationarise). CSV so the
   ## byte-identical intermediate the published TE_matrix was estimated on is the
   ## dataset; ce_returns reads it via the .csv branch below.
-  news_attention = file.path(REPO, "papers/news-networks/data/news_attention_logchange.csv")
+  news_attention = file.path(REPO, "papers/news-networks/data/news_attention_logchange.csv"),
+  ## Crisis-regime contagion panel (MST-contagion paper, Parida, Bhandari &
+  ## Sahu 2026): 26 global equity/FX/commodity markets, daily LOG RETURNS,
+  ## 2007-01-02 -> 2025-11-27 (5524 rows), ISO-dated CSV for the generic
+  ## loader below. Sentinel = the repo copy; falls back to the installed
+  ## mstcontagion package's bundled extdata via system.file, same pattern as
+  ## g20_24 falling back to namh's bundled copy.
+  crisis_regime_panel = file.path(REPO, "papers/contagion-channels/MST-contagion/data/Returns_prices.csv")
 )
 
 ce_fail <- function(msg) {
@@ -113,10 +120,19 @@ ce_returns <- function(p) {
     dates <- as.Date(zoo::index(obj))
     mat   <- as.matrix(zoo::coredata(obj))
   } else if (grepl("\\.csv$", path, ignore.case = TRUE)) {
-    ## plain CSV: first column ISO dates (yyyy-mm-dd), remaining columns numeric.
-    ## Used by the news_attention panel (already stationarised log-changes).
+    ## plain CSV: first column dates, remaining columns numeric. ISO (yyyy-mm-dd)
+    ## for news_attention (already stationarised log-changes) and the repo copy
+    ## of crisis_regime_panel; falls back to the installed mstcontagion
+    ## package's bundled extdata (dd-mm-yyyy, its original provenance format)
+    ## if the repo copy is absent, same pattern as g20_24 falling back to namh.
+    if (ds == "crisis_regime_panel" && !file.exists(path) &&
+        suppressMessages(suppressWarnings(requireNamespace("mstcontagion", quietly = TRUE)))) {
+      sf <- system.file("extdata", "Returns_prices.csv", package = "mstcontagion")
+      if (nzchar(sf)) path <- sf
+    }
     d     <- utils::read.csv(path, check.names = FALSE, stringsAsFactors = FALSE)
     dates <- as.Date(d[[1]])
+    if (all(is.na(dates))) dates <- as.Date(d[[1]], format = "%d-%m-%Y")
     mat   <- as.matrix(d[, -1, drop = FALSE])
   } else {
     d     <- suppressMessages(read_excel(path))

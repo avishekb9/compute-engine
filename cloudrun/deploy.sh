@@ -22,12 +22,16 @@ SOCHPKG="$REPO/papers/SOCH/code/sochcontagion_0.1.0.tar.gz"   # published method
 CCPKG="$REPO/papers/contagion-channels/code/contagionchannels_0.1.3.tar.gz"   # published method for channel_attribution
 NAMHPKG="$REPO/papers/namh/code/namh_0.1.0.tar.gz"   # published methods for namh_hurst / namh_te (+ bundled g20_24 extdata)
 NEWS="$REPO/papers/news-networks/data/news_attention_logchange.csv"   # news_attention dataset (Frontiers III news-attention TE)
+MSTPKG="$REPO/papers/contagion-channels/MST-contagion/mstcontagion_0.1.0.tar.gz"   # published method for regime_conditioned_te
+MSTDATA="$REPO/papers/contagion-channels/MST-contagion/data"   # crisis_regime_panel: Returns_prices.csv + stress_regimes.csv
 
 [ -f "$DATA" ] || { echo "ERROR: G20 data not found at $DATA"; exit 1; }
 [ -f "$SOCHPKG" ] || { echo "ERROR: sochcontagion tarball not found at $SOCHPKG"; exit 1; }
 [ -f "$CCPKG" ] || { echo "ERROR: contagionchannels tarball not found at $CCPKG"; exit 1; }
 [ -f "$NAMHPKG" ] || { echo "ERROR: namh tarball not found at $NAMHPKG (build: R CMD build papers/namh/code/namh-pkg)"; exit 1; }
 [ -f "$NEWS" ] || { echo "ERROR: news-attention panel not found at $NEWS"; exit 1; }
+[ -f "$MSTPKG" ] || { echo "ERROR: mstcontagion tarball not found at $MSTPKG (build: cd papers/contagion-channels/MST-contagion && R CMD build mstcontagion)"; exit 1; }
+[ -f "$MSTDATA/Returns_prices.csv" ] || { echo "ERROR: crisis_regime_panel data not found at $MSTDATA"; exit 1; }
 
 # ---- provenance + pre-promotion gates (Tier-0 hardening) ----
 # Refuse to ship source that is not in git (that is how the live engine became
@@ -76,10 +80,14 @@ cp "$ENGINE/knowledge-bank.json" "$BUILD/knowledge-bank.json"   # read-only acad
 cp "$SOCHPKG" "$BUILD/sochcontagion_0.1.0.tar.gz"
 cp "$CCPKG" "$BUILD/contagionchannels_0.1.3.tar.gz"
 cp "$NAMHPKG" "$BUILD/namh_0.1.0.tar.gz"
+cp "$MSTPKG" "$BUILD/mstcontagion_0.1.0.tar.gz"
 mkdir -p "$BUILD/data-root/papers/contagion-channels/data"
 cp "$DATA" "$BUILD/data-root/papers/contagion-channels/data/G20.xlsx"
 mkdir -p "$BUILD/data-root/papers/news-networks/data"
 cp "$NEWS" "$BUILD/data-root/papers/news-networks/data/news_attention_logchange.csv"
+mkdir -p "$BUILD/data-root/papers/contagion-channels/MST-contagion/data"
+cp "$MSTDATA/Returns_prices.csv" "$BUILD/data-root/papers/contagion-channels/MST-contagion/data/Returns_prices.csv"
+cp "$MSTDATA/stress_regimes.csv" "$BUILD/data-root/papers/contagion-channels/MST-contagion/data/stress_regimes.csv"
 
 echo "Build context: $BUILD"
 # NOTE: --set-env-vars REPLACES the whole env on each deploy, so any capability

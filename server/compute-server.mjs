@@ -387,6 +387,24 @@ const METHODS = {
     paper: null, deprecated: false,
     changelog: [{ version: "1.0.0", note: "Frontiers III directed news-attention TE network; deterministic raw max-norm KSG (shared _ksg_core), reproduces the paper's TE_matrix at published precision; significance via async ksg_te on dataset=news_attention" }],
   },
+  regime_conditioned_te: {
+    runner: "r", script: "regime_conditioned_te.R",
+    label: "Regime-Conditioned Contagion Network — wavelet-scale directed TE (MST-contagion)",
+    category: "Contagion · Information Flow (async)",
+    desc: "Directed, scale-resolved transfer-entropy network of Parida, Bhandari & Sahu (2026), run via the PUBLISHED `mstcontagion` package (github.com/avishekb9/mstcontagion, GPL-3) — the paper's own method, not a reimplementation. Maximal-overlap wavelet detail coefficients (one of four scales, D1≈2-4d .. D4≈16-32d) feed the SAME validated KSG/Frenzel-Pompe transfer-entropy estimator as ksg_te (shared verbatim from _ksg_core.R), pooled within a crisis or tranquil regime's contiguous episodes — the paper's own endogenous 2-state Markov-switching regime dates on a rolling-volatility stress factor, bundled with the package — and tested against IAAFT source surrogates under node-level Benjamini-Hochberg FDR control. Runs on the `crisis_regime_panel` dataset (26 global equity/FX/commodity markets, 2007-2025). Heavy (wavelet decomposition x k-d-tree CMI x surrogates across up to 650 directed pairs) — runs ONLY as a background job via /api/jobs/submit; discoverable here but rejected by the sync /api/compute/run endpoint.",
+    dataset: "crisis_regime_panel",
+    params: {
+      series: { type: "series", n: [2, 26], optional: true },
+      regime: { type: "enum", values: ["crisis", "tranquil"], optional: true },
+      scale: { type: "enum", values: ["D1", "D2", "D3", "D4"], optional: true },
+      k: { type: "int", optional: true }, lag: { type: "int", optional: true },
+      n_surrogates: { type: "int", optional: true }, nmax: { type: "int", optional: true },
+    },
+    version: "1.0.0", capability: "contagion", primitives: ["P3", "P4"], long_running: true, min_obs: 500,
+    returns: ["method", "dataset", "regime", "scale", "k", "lag", "n_surrogates", "n_series", "n_regime_days", "n_episodes", "n_pairs", "n_significant_edges", "assets", "edges", "top_edges", "nodes", "top_net_senders", "runtime_s", "paper", "interpretation"],
+    paper: "mst-contagion", deprecated: false,
+    changelog: [{ version: "1.0.0", note: "Directed, scale-resolved, regime-conditioned contagion network via the published mstcontagion package; async-only" }],
+  },
   // ── v5: Bellman control-operator layer (FRONTIERS V.2 Recursive Control) ──────
   // Four parameterised-only operators over the M3-faithful calibrated plant shipped
   // in r/fixtures/v5_control_plant.json (derived from the MST panel by the published
@@ -492,6 +510,17 @@ const NEWS_HASH = (() => {
   catch (e) { console.error(`[panel] could not hash news panel at ${NEWS_PATH}: ${e.message}`); return null; }
 })();
 
+// Crisis-regime contagion panel (MST-contagion paper, Parida, Bhandari & Sahu
+// 2026): 26 global equity/FX/commodity markets, daily log-returns, 2007-01-02
+// -> 2025-11-27 (5524 rows). Names match the CSV header order EXACTLY — used
+// by validate() to accept series for regime_conditioned_te.
+const MST_CONTAGION_SERIES = ["Gold","Silver","Copper","Crude Oil","Natural Gas","S&P 500","DAX 30","CAC 40","FTSE 100","Nikkei 225","FTSE MIB","S&P/TSX Composite","SSE Composite","BSE SENSEX","BIST 100","IBOVESPA","IPC MEXICO","IDX COMPOSITE","IMOEX","EUR","GBP","JPY","CHF","CNY","INR","CAD"];
+const MST_CONTAGION_PATH = join(REPO, "papers/contagion-channels/MST-contagion/data/Returns_prices.csv");
+const MST_CONTAGION_HASH = (() => {
+  try { return createHash("sha256").update(readFileSync(MST_CONTAGION_PATH)).digest("hex"); }
+  catch (e) { console.error(`[panel] could not hash crisis-regime panel at ${MST_CONTAGION_PATH}: ${e.message}`); return null; }
+})();
+
 const DATASETS = {
   g20: {
     id: "g20",
@@ -581,6 +610,24 @@ const DATASETS = {
     source: "News-attention volume intensity from a global open news-monitoring corpus, aggregated by the NEURICX research engine; log-changed (build_network.py::stationarise)",
     version: "2026-06",                 // vintage of this panel snapshot
     sha256_hash: NEWS_HASH,             // file-byte sha256, cached at startup
+    access: "public",
+  },
+  // Crisis-regime contagion panel (MST-contagion). Powers regime_conditioned_te.
+  // Bundled regime dates (data-identified crisis/tranquil episodes from the
+  // paper's own Markov-switching model) are read separately by the R method.
+  crisis_regime_panel: {
+    id: "crisis_regime_panel",
+    label: "Crisis-regime contagion panel (26 markets, 2007–2025)",
+    description: "Daily log-returns, 26 global equity/FX/commodity markets, with data-identified crisis/tranquil regime dates (Parida, Bhandari & Sahu 2026)",
+    markets: MST_CONTAGION_SERIES.length,   // 26
+    series: MST_CONTAGION_SERIES,
+    n: 5524,
+    frequency: "daily",
+    start: "2007-01-02",
+    end: "2025-11-27",
+    source: "mstcontagion package bundled data (github.com/avishekb9/mstcontagion)",
+    version: "0.1.0",                   // mstcontagion package version = data vintage
+    sha256_hash: MST_CONTAGION_HASH,    // file-byte sha256, cached at startup
     access: "public",
   },
 };
