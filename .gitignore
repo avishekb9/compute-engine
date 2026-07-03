@@ -4,6 +4,11 @@
 *.log
 compute-reports/
 
+# literature-tooling local artifacts (dry-run output, enrichment payload, datastore backups)
+neuricx/literature/enrichment-payload.json
+neuricx/literature/datastore-backup-*.json
+neuricx/literature/literature-dryrun.jsonl
+
 # never commit secrets / local env
 .env
 .env.local
