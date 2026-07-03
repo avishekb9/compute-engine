@@ -1375,6 +1375,30 @@ async function queryLiterature(ctx = {}) {
   }
 }
 
+// semanticNeighbors(text) — additive semantic retrieval over the 10k embedded corpus
+// (literature.corpus_embeddings) via BigQuery VECTOR_SEARCH, query embedded inline through
+// the emb_model remote model. Complements the (small, structured) literature.papers claims
+// graph with broad related-work from the full corpus. NEVER throws; returns [] on any failure.
+async function semanticNeighbors(text, topK = 8) {
+  try {
+    const q = text != null ? String(text).trim().slice(0, 400) : "";
+    if (!q) return [];
+    const sql =
+      "SELECT base.paper_id AS paper_id, base.title AS title, distance AS dist\n" +
+      `FROM VECTOR_SEARCH(\n  TABLE \`${BQ_PROJECT}.${BQ_DATASET}.corpus_embeddings\`, 'embedding',\n` +
+      "  (SELECT ml_generate_embedding_result AS embedding\n" +
+      `   FROM ML.GENERATE_EMBEDDING(MODEL \`${BQ_PROJECT}.${BQ_DATASET}.emb_model\`,\n` +
+      "     (SELECT @qtext AS content), STRUCT(TRUE AS flatten_json_output))),\n" +
+      `  top_k => ${topK}, distance_type => 'COSINE')\nORDER BY dist`;
+    const params = [{ name: "qtext", parameterType: { type: "STRING" }, parameterValue: { value: q } }];
+    const res = await _bqQuery(sql, params);
+    if (!res || !res.ok) return [];
+    return (res.rows || [])
+      .map((r) => ({ paper_id: r.paper_id ?? null, title: r.title ?? null, distance: r.dist != null ? Number(r.dist) : null }))
+      .filter((p) => p.paper_id);
+  } catch { return []; }
+}
+
 // buildLiteratureContext(ctx, result?) — assembles a citation-safe context from the
 // REAL retrieved rows ONLY. Classification is DETERMINISTIC (no LLM): a retrieved
 // claim is `supporting` if it shares metric+context with `result` and the same sign;
@@ -1382,11 +1406,14 @@ async function queryLiterature(ctx = {}) {
 // paper. Empty context is acceptable. NEVER adds a paper/claim not in the rows.
 async function buildLiteratureContext(ctx = {}, result) {
   const lit = await queryLiterature(ctx);
+  // Additive semantic retrieval over the 10k embedded corpus (VECTOR_SEARCH); [] on failure.
+  const semantic = (ctx && ctx.text) ? await semanticNeighbors(ctx.text) : [];
+  const litPapers = (lit.status === "ok" && Array.isArray(lit.papers)) ? lit.papers : [];
   const empty = {
-    papers_found: lit.papers_found || 0, status: lit.status,
+    papers_found: 0, status: (litPapers.length || semantic.length) ? "ok" : lit.status,
     related_papers: [], related_methods: [], supporting_claims: [], conflicting_claims: [],
   };
-  if (lit.status !== "ok" || !lit.papers.length) {
+  if (!litPapers.length && !semantic.length) {
     if (lit.reason) empty.reason = lit.reason;
     return empty;
   }
@@ -1399,12 +1426,16 @@ async function buildLiteratureContext(ctx = {}, result) {
     if (rmetric != null) targets.push({ metric: norm(rmetric), context: norm(rcontext), sign: rsign });
   }
 
-  const related_papers = lit.papers.map((p) => ({ paper_id: p.paper_id, title: p.title, date: p.date }));
+  const related_papers = litPapers.map((p) => ({ paper_id: p.paper_id, title: p.title, date: p.date }));
+  const seen = new Set(related_papers.map((p) => p.paper_id));
+  for (const n of semantic) if (n.paper_id && !seen.has(n.paper_id)) {
+    seen.add(n.paper_id); related_papers.push({ paper_id: n.paper_id, title: n.title, date: null, semantic: true });
+  }
   const methodSet = new Set();
-  for (const p of lit.papers) for (const m of p.methods) if (m) methodSet.add(m);
+  for (const p of litPapers) for (const m of p.methods) if (m) methodSet.add(m);
 
   const supporting_claims = [], conflicting_claims = [];
-  for (const p of lit.papers) {
+  for (const p of litPapers) {
     for (const c of p.claims) {
       if (!targets.length) continue;
       const cm = norm(c.metric), cc = norm(c.context);
@@ -1420,7 +1451,7 @@ async function buildLiteratureContext(ctx = {}, result) {
     }
   }
   return {
-    papers_found: lit.papers_found, status: lit.status,
+    papers_found: related_papers.length, status: "ok",
     related_papers, related_methods: [...methodSet], supporting_claims, conflicting_claims,
   };
 }
@@ -1429,7 +1460,7 @@ async function buildLiteratureContext(ctx = {}, result) {
 // nothing real to inject (unavailable OR empty) so /api/research degrades silently.
 function literatureContextBlock(litCtx) {
   if (!litCtx || litCtx.status !== "ok" || !litCtx.related_papers.length) return "";
-  return "\n\nLITERATURE GRAPH CONTEXT (retrieved from literature.papers; cite these, do not invent):\n" +
+  return "\n\nLITERATURE GRAPH CONTEXT (retrieved from literature.papers + semantic corpus of 10k works; cite these, do not invent):\n" +
     JSON.stringify({
       related_papers: litCtx.related_papers,
       related_methods: litCtx.related_methods,
