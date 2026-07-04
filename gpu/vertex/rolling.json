@@ -1,0 +1,38 @@
+{
+  "displayName": "nightly-rolling-te",
+  "jobSpec": {
+    "workerPoolSpecs": [
+      {
+        "machineSpec": {
+          "machineType": "n1-standard-8",
+          "acceleratorType": "NVIDIA_TESLA_T4",
+          "acceleratorCount": 1
+        },
+        "replicaCount": "1",
+        "containerSpec": {
+          "imageUri": "us-central1-docker.pkg.dev/hopeful-flash-485308-v3/econstellar-gpu/ksg-sweep:v4",
+          "env": [
+            {
+              "name": "BUNDLE_URI",
+              "value": "gs://econstellar-jobs/ksg-gpu/rolling/rolling-bundle.tar.gz"
+            },
+            {
+              "name": "DRIVER",
+              "value": "gpu/rolling_sweep_gpu.py"
+            },
+            {
+              "name": "RESULT_NAME",
+              "value": "rolling_te"
+            }
+          ]
+        }
+      }
+    ],
+    "scheduling": {
+      "strategy": "SPOT",
+      "timeout": "43200s",
+      "restartJobOnWorkerRestart": true
+    },
+    "serviceAccount": "vertex-ai-runner@hopeful-flash-485308-v3.iam.gserviceaccount.com"
+  }
+}
