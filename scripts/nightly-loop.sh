@@ -20,6 +20,12 @@ if ! curl -sf --max-time 5 http://127.0.0.1:3030/api/jobs >/dev/null 2>&1; then
   sleep 4
 fi
 
+# 1b) GPU sweep results: sync any new Vertex result blobs into the te_networks
+#     rail (idempotent, dedup on blob URI; a GCS/BQ outage logs and moves on so
+#     it can never take the suite down with it).
+node "$ENGINE_DIR/scripts/load-te-results.mjs" 2>&1 | sed "s/^/$LOG_PREFIX te-loader: /" || \
+  echo "$LOG_PREFIX te-loader failed (non-fatal)"
+
 # 2) the eval suite: one genuine run of the committed runner, artifact in place
 if [ -f "$PAGES_DIR/evals/run-evals.mjs" ]; then
   ( cd "$PAGES_DIR" && node evals/run-evals.mjs --async --out="$PAGES_DIR/evals.json" )
