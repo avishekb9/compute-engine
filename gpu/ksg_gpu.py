@@ -234,13 +234,31 @@ def _iaaft_batch(x, rng, B, n_iter=100):
     rank order is fixed it is a fixed point (s=sx[r] -> same S -> same r), so iterating
     to a global stop is identical to per-row early-breaking. Ordinal ranks via a stable
     double-argsort == R rank(ties.method='first'). The engine seeds NEITHER ksg method,
-    so this independent draw is statistically equivalent, never claimed bit-identical."""
+    so this independent draw is statistically equivalent, never claimed bit-identical.
+
+    Dispatch: the iteration loop runs on the GPU (cupy / batched cuFFT) when cupy is
+    importable and a device is usable -- at large B this host FFT loop dominates the
+    sweep wall-clock while the device sits idle between pair searches. Random starts
+    are still drawn from the caller's numpy rng (semantics unchanged); any cupy
+    failure falls back to the host path. cupy argsort (CUB radix) is stable in
+    practice though not contractually; ties in the continuous ifft output are
+    measure-zero and both paths are unseeded statistical draws, so the two paths
+    stay statistically equivalent (documented, never claimed bit-identical)."""
     n = x.shape[0]
-    sx = np.sort(x)
-    amp = np.abs(np.fft.fft(x))[None, :]               # x's amplitude spectrum (shared)
     s = np.empty((B, n), dtype=np.float64)
     for b in range(B):
         s[b] = x[rng.permutation(n)]                   # independent random starts
+    if _CUPY is not None:
+        try:
+            return _iaaft_iterate_gpu(x, s, n_iter)
+        except Exception:
+            pass                                        # any device failure -> host path
+    return _iaaft_iterate_cpu(x, s, n_iter)
+
+
+def _iaaft_iterate_cpu(x, s, n_iter):
+    sx = np.sort(x)
+    amp = np.abs(np.fft.fft(x))[None, :]               # x's amplitude spectrum (shared)
     prev = None
     for _ in range(n_iter):
         S = np.fft.fft(s, axis=1)
@@ -252,6 +270,34 @@ def _iaaft_batch(x, rng, B, n_iter=100):
             break
         prev = r
     return s
+
+
+def _iaaft_iterate_gpu(x, starts, n_iter):
+    """Identical algorithm with the whole loop on the device: batched cuFFT + the
+    same double-argsort rank imposition. One host sync per iteration (the global
+    convergence test); the surrogate block is copied back exactly once."""
+    cp = _CUPY
+    sx = cp.asarray(np.sort(x))
+    amp = cp.abs(cp.fft.fft(cp.asarray(x)))[None, :]
+    s = cp.asarray(starts)
+    prev = None
+    for _ in range(n_iter):
+        S = cp.fft.fft(s, axis=1)
+        ph = S / cp.maximum(cp.abs(S), 1e-12)
+        s2 = cp.real(cp.fft.ifft(amp * ph, axis=1))
+        r = cp.argsort(cp.argsort(s2, axis=1), axis=1)
+        s = sx[r]
+        if prev is not None and bool(cp.array_equal(r, prev)):
+            break
+        prev = r
+    return cp.asnumpy(s)
+
+
+try:                                                    # optional GPU FFT backend
+    import cupy as _CUPY
+    _CUPY.cuda.runtime.getDeviceCount()                 # raises if no usable device
+except Exception:
+    _CUPY = None
 
 
 # -------------------------------------------------------------------------- main
