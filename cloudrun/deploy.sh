@@ -64,13 +64,12 @@ else
   fi
 fi
 
-# GOOGLE_API_KEY enables the /api/chat Gemini analyst. Read from env or
-# versiondevs/.env.local (one level above ivy-fineco); never printed/committed.
-KEY="${GOOGLE_API_KEY:-}"
-if [ -z "$KEY" ] && [ -f "$REPO/../.env.local" ]; then
-  KEY=$(grep '^GOOGLE_API_KEY=' "$REPO/../.env.local" | cut -d= -f2- | tr -d '"' | tr -d "'")
-fi
-[ -z "$KEY" ] && echo "WARN: GOOGLE_API_KEY not found — /api/chat will be disabled on this revision."
+# GOOGLE_API_KEY enables the /api/chat + /api/research Gemini analysts. Since
+# 2026-07-04 it is mounted from Secret Manager (secret google-api-key, latest),
+# never passed as a plaintext env var (a plaintext value is inspectable via
+# `services describe`). The secret must exist and the runtime SA must hold
+# secretAccessor on it; both were provisioned 2026-07-04.
+API_KEY_SECRET="GOOGLE_API_KEY=google-api-key:latest"
 
 BUILD="$(mktemp -d)"
 trap 'rm -rf "$BUILD"' EXIT
@@ -102,7 +101,8 @@ gcloud run deploy "$SERVICE" \
   --allow-unauthenticated \
   --memory 2Gi --cpu 2 --timeout 300 \
   --min-instances 0 --max-instances 2 --concurrency 16 \
-  --set-env-vars "HOST=0.0.0.0,COMPUTE_TIMEOUT_S=90,MAX_CONCURRENT=8,MAX_LLM_PER_DAY=400,BUILD_SHA=$GIT_SHA${KEY:+,GOOGLE_API_KEY=$KEY}${CE_CAP_ENV:+,$CE_CAP_ENV}" \
+  --set-env-vars "HOST=0.0.0.0,COMPUTE_TIMEOUT_S=90,MAX_CONCURRENT=8,MAX_LLM_PER_DAY=400,BUILD_SHA=$GIT_SHA${CE_CAP_ENV:+,$CE_CAP_ENV}" \
+  --set-secrets "$API_KEY_SECRET" \
   --quiet
 
 URL="$(gcloud run services describe "$SERVICE" --project "$PROJECT" --region "$REGION" --account "$ACCOUNT" --format='value(status.url)')"
