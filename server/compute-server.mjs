@@ -1805,6 +1805,34 @@ const server = createServer(async (req, res) => {
     return send(200, "application/json", JSON.stringify({ status: "ok", date: row.date, sri: row.sri, edges: row.top_edges || [] }));
   }
 
+  // ── GPU-sweep transfer-entropy networks (public, read-only, graceful-degrade) ──
+  // Results of the Vertex Spot GPU sweeps (large-B robustness, regime-conditioned,
+  // rolling-window), persisted to systemic_risk.te_networks by the sweep loader with
+  // full provenance (params JSON + the source result blob URI). Same rail shape as
+  // /api/sri/network so the portal's edge-list renderers apply unchanged.
+  const TE_NET_TBL = "`" + BQ_PROJECT + ".systemic_risk.te_networks`";
+  if (u.pathname === "/api/te/networks" && req.method === "GET") {
+    const run = (u.searchParams.get("run") || "").slice(0, 64);
+    const ds  = (u.searchParams.get("dataset") || "").slice(0, 32).toLowerCase();
+    const full = u.searchParams.get("edges") === "1";           // default: top edges only
+    const cols = "run_id, created, dataset, method, params, n_pairs, n_significant, top" + (full ? ", edges" : "");
+    let sql, params = [];
+    if (/^[A-Za-z0-9_\-]{4,64}$/.test(run)) {
+      sql = "SELECT " + cols + " FROM " + TE_NET_TBL + " WHERE run_id = @run LIMIT 1";
+      params.push({ name: "run", parameterType: { type: "STRING" }, parameterValue: { value: run } });
+    } else if (/^[a-z0-9_]{2,32}$/.test(ds)) {
+      sql = "SELECT " + cols + " FROM " + TE_NET_TBL + " WHERE dataset = @ds ORDER BY created DESC LIMIT 1";
+      params.push({ name: "ds", parameterType: { type: "STRING" }, parameterValue: { value: ds } });
+    } else {
+      sql = "SELECT run_id, created, dataset, method, n_pairs, n_significant FROM " + TE_NET_TBL + " ORDER BY created DESC LIMIT 25";
+    }
+    const r = await _bqQuery(sql, params);
+    if (!r.ok) return send(200, "application/json", JSON.stringify({ status: "unavailable", reason: r.error, runs: [] }));
+    if (!r.rows || !r.rows.length) return send(200, "application/json", JSON.stringify({ status: "unavailable", reason: "no matching run", runs: [] }));
+    if (!run && !ds) return send(200, "application/json", JSON.stringify({ status: "ok", n: r.rows.length, runs: r.rows }));
+    return send(200, "application/json", JSON.stringify({ status: "ok", run: r.rows[0] }));
+  }
+
   // ── Phase 34: epistemic claim layer (public, read-only, graceful-degrade) ──
   // The space's self-description. Claims are seeded ONLY from verified ground truth
   // (scripts/claims-seed.mjs — every row provenanced) and refreshed by the nightly
