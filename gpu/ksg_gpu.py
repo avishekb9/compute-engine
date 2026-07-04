@@ -421,8 +421,10 @@ def main():
         "n_obs": int(R.shape[0] - lag),
         "k": k, "lag": lag, "B": B,
         "seconds": round(secs, 3),
-        "surrogate_engine": "numpy-iaaft (method unseeded in the engine; p-values "
+        "surrogate_engine": ("cufft-iaaft" if _CUPY is not None else "numpy-iaaft")
+                            + " (method unseeded in the engine; p-values "
                             "non-reproducible in both CPU and GPU paths)",
+        "fft_backend": "cupy" if _CUPY is not None else "numpy",
         "pairs": out_pairs,
     }
     with open(args.out, "w") as f:
