@@ -61,6 +61,10 @@ const pushRow = (runId, ts, d, block, regime) => rows.push(JSON.stringify({
     n_obs: block.n_obs ?? d.n_obs ?? null, n_series: d.n_series ?? d.n_markets ?? null,
     gpu: block.gpu_device ?? d.gpu_device ?? null, runtime_s: d.runtime_s ?? null,
     window: d.window ?? null, step: d.step ?? null, regime,
+    n_windows: d.n_windows ?? null,
+    peak_spectral_radius: d.peak_spectral_radius ?? null,
+    peak_end_date: d.peak_end_date ?? null,
+    peak_window_index: d.peak_window_index ?? null,
   }),
   n_pairs: block.n_pairs ?? (Array.isArray(block.edges) ? block.edges.length : null),
   n_significant: block.n_significant ?? null,
@@ -85,12 +89,28 @@ for (const uri of fresh) {
       pushRow(`${runIdOf(uri).slice(0, 63 - tag.length)}-${tag}`, ts, d, { ...r, ...base }, r.regime ?? null);
     }
   } else if (Array.isArray(d.windows)) {
-    // rolling sweeps: one summary row; the per-window series stays in the blob
-    // (edges holds the peak-fragility window's edge list when present)
-    const peak = d.peak_window ?? {};
-    pushRow(runIdOf(uri), ts, d, {
-      n_pairs: d.n_pairs ?? null, n_significant: d.n_significant ?? null,
-      edges: peak.edges ?? [], top: topOf(peak.edges), ...base,
+    // rolling sweeps: one summary row; the per-window series stays in the blob.
+    // The peak-fragility window (max significant-edge spectral radius) carries the
+    // headline: its edge list, n_significant, spectral radius and end-date. The rest
+    // of the 264-window series is preserved in the edges column as a compact
+    // {window_index,end_date,spectral_radius_sig,n_significant,density} track for the
+    // portal fragility chart (P1 fragility-edge companion).
+    const peak = d.peak_fragility_window ?? d.peak_window ?? {};
+    const series = d.windows.map(w => ({
+      i: w.window_index, end: w.end_date, sr: w.spectral_radius_sig,
+      sr_all: w.spectral_radius_all, sig: w.n_significant, density: w.density,
+    }));
+    pushRow(runIdOf(uri), ts, {
+      ...d,
+      // stamp the fragility summary into params so the rail exposes it without a re-parse
+      peak_spectral_radius: peak.spectral_radius_sig ?? null,
+      peak_end_date: peak.end_date ?? null,
+      peak_window_index: peak.window_index ?? null,
+      n_windows: d.n_windows ?? d.windows.length,
+    }, {
+      n_pairs: (d.n_markets != null ? d.n_markets * (d.n_markets - 1) : null),
+      n_significant: peak.n_significant ?? null,
+      edges: series, top: topOf(peak.edges), ...base,
     }, null);
   } else {
     pushRow(runIdOf(uri), ts, d, { ...d, ...base }, null);
