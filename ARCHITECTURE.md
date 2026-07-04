@@ -12,8 +12,8 @@ number can be banded against an expectation and reproduced later. The governing
 rule: **a method is not in the catalogue until it ships with a failable test of
 its own output.** The catalogue and that suite of tests are the deliverable.
 
-As of 2026-06-18 the public registry serves **31 methods** — `GET /health` →
-`{methods: 31, revision: shssm-compute-00048-lxc, sandbox: "timeout", timeout_s: 90}`.
+As of 2026-07-04 the public registry serves **32 methods** — `GET /health` →
+`{methods: 32, revision: shssm-compute-00055-bjz, sandbox: "timeout", timeout_s: 90}`.
 The §A2 registry below itemises the original **26**; the five served since are
 `news_attention_te` (FRONTIERS III, added at rev `…-00045-ns8`) and the four
 FRONTIERS V.2 control operators `lq_regulator`, `bellman_value`, `turnpike`,

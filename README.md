@@ -29,7 +29,7 @@ charts.
 | Rolling Connectedness (time-varying Diebold-Yilmaz) | `vars` | — |
 | Quantile VAR (tail dependence) | `quantreg` | — |
 
-> The table above samples the catalog; the live registry now serves **31 methods** in total
+> The table above samples the catalog; the live registry now serves **32 methods** in total
 > (see `ARCHITECTURE.md` §A2 for the original 26 with verified values and pre-registered
 > bands, and the §A intro for the five later additions: `news_attention_te` and the four
 > FRONTIERS V.2 control operators). The most recent additions are the reproduction and formal-verification methods
@@ -94,7 +94,7 @@ compute-engine/
 
 ## Status & roadmap
 
-- **Now:** 31 methods (incl. the four FRONTIERS V.2 control operators), bwrap sandbox, AI chatbot, Cloud Run deployment + an async
+- **Now:** 32 methods (incl. the four FRONTIERS V.2 control operators and the GPU-swept regime_conditioned_te), bwrap sandbox, AI chatbot, Cloud Run deployment + an async
   workstation tower with GPU-accelerated transfer entropy — all verified on real G20 data.
 - **Next:** dataset upload; packaged `contagionchannels` / `WaveQTE` estimators;
   VECM, panel-IV, local projections, DSGE (via `gEcon`); deployment;

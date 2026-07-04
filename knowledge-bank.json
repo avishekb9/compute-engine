@@ -131,7 +131,7 @@
         "bellman_value",
         "fragility_barrier"
       ],
-      "engine_rev": "00046-mbx (31 methods)",
+      "engine_rev": "00055-bjz (32 methods)",
       "refs": [
         "Anderson-Moore 1990",
         "Galeotti-Golub-Goyal 2020 (softened)"
